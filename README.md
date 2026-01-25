@@ -1,16 +1,35 @@
-# React + Vite
+# SnowballR 📈
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A clean, accessible ETF research and growth simulation tool.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **ETF Search**: Quick search for popular ETFs (VOO, SPY, QQQ, etc.)
+- **ETF Details**: View key metrics like expense ratio, returns, volatility, and dividend yield
+- **Growth Simulator**: Calculate potential investment growth over time with monthly contributions
+- **Interactive Charts**: Visualize your investment projections
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **React** - UI framework
+- **Vite** - Build tool
+- **Tailwind CSS** - Styling
+- **lightweight-charts** - Chart visualizations
 
-## Expanding the ESLint configuration
+## Usage
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. Search for an ETF by ticker symbol (e.g., VOO, SPY)
+2. View detailed information about the selected ETF
+3. Use the Growth Simulator to project investment returns
+4. Adjust initial investment, monthly contributions, and time horizon
+
+## Future Improvements
+
+- Add more ETFs to the database
+- Compare multiple ETFs side-by-side
+- Historical performance charts
+- Portfolio tracking
+
+---
+
+Built for accessible financial education 🎓
