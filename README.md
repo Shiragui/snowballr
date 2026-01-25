@@ -1,13 +1,15 @@
 # SnowballR 📈
 
-A clean, accessible ETF research and growth simulation tool.
+A clean, accessible ETF research and growth simulation Frontend UI Demo.
+
+🚀 **Live Site:** [https://snowballr.netlify.app](https://snowballr.netlify.app)
 
 ## Features
 
 - **ETF Search**: Quick search for popular ETFs (VOO, SPY, QQQ, etc.)
 - **ETF Details**: View key metrics like expense ratio, returns, volatility, and dividend yield
 - **Growth Simulator**: Calculate potential investment growth over time with monthly contributions
-- **Interactive Charts**: Visualize your investment projections
+- **Interactive Charts**: Visualize investment projections
 
 ## Tech Stack
 
@@ -23,9 +25,9 @@ A clean, accessible ETF research and growth simulation tool.
 3. Use the Growth Simulator to project investment returns
 4. Adjust initial investment, monthly contributions, and time horizon
 
-## Future Improvements
+## Future Improvements: Connect Backend
 
-- Add more ETFs to the database
+- Connect a live database
 - Compare multiple ETFs side-by-side
 - Historical performance charts
 - Portfolio tracking
