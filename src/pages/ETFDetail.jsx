@@ -6,7 +6,7 @@ import ProjectionChart from "../components/ProjectionChart";
 export default function ETFDetail({ etf }) {
   const [growthData, setGrowthData] = useState([]);
 
-  if (!etf) return <p>Select an ETF from home page.</p>;
+  if (!etf) return null;
 
   return (
     <div style={{ padding: "2rem" }}>

@@ -18,14 +18,13 @@ export default function Home({ onSelectETF }) {
 
   return (
     <div style={{ padding: "2rem" }}>
-      <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>SnowballR</h1>
       <SearchBar
         value={search}
         onChange={handleChange}
         onSelect={handleSelect}
         suggestions={results}
       />
-      <p>Type a ticker to see ETF details.</p>
+      
     </div>
   );
 }

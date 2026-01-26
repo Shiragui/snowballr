@@ -10,7 +10,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       <header className="mb-8 text-center py-8">
         <h1 className="text-5xl font-bold text-emerald-400">SnowballR</h1>
-        <p className="text-gray-300 mt-2">Accessible ETF research & growth simulation</p>
+    
       </header>
 
       <main className="w-full px-8 flex flex-col md:flex-row gap-8 max-w-7xl mx-auto">
