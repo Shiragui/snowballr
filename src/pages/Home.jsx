@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { etfs } from "../data/etfs";
 import SearchBar from "../components/SearchBar";
 
-export default function Home({ onSelectETF }) {
+export default function Home({ onSelectETF, selectedETF }) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
 
@@ -14,17 +14,19 @@ export default function Home({ onSelectETF }) {
 
   const handleSelect = (etf) => {
     onSelectETF(etf);
+    setSearch("");
+    setResults([]);
   };
 
   return (
-    <div style={{ padding: "2rem" }}>
+    <div>
       <SearchBar
         value={search}
         onChange={handleChange}
         onSelect={handleSelect}
         suggestions={results}
+        selectedETF={selectedETF}
       />
-      
     </div>
   );
 }

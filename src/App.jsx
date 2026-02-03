@@ -2,30 +2,30 @@ import React, { useState } from "react";
 import Home from "./pages/Home";
 import ETFDetail from "./pages/ETFDetail";
 import ProjectionChart from "./components/ProjectionChart";
+import { etfs } from "./data/etfs";
+
+
 
 export default function App() {
-  const [selectedETF, setSelectedETF] = useState(null);
+  const [selectedETF, setSelectedETF] = useState(etfs.find(e => e.ticker === "QQQ"));
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="mb-8 text-center py-8">
-        <h1 className="text-5xl font-bold text-emerald-400">SnowballR</h1>
-    
-      </header>
-
-      <main className="w-full px-8 flex flex-col md:flex-row gap-8 max-w-7xl mx-auto">
-        <div className="md:w-1/3">
-          <Home onSelectETF={setSelectedETF} />
+      <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+        {/* Search bar section */}
+        <div className="w-full max-w-2xl">
+          <Home onSelectETF={setSelectedETF} selectedETF={selectedETF} />
         </div>
 
-        <div className="md:w-2/3">
+        {/* Details and chart section */}
+        <div className="w-full space-y-6">
           <ETFDetail etf={selectedETF} />
           
           {/* Chart Section */}
-        <div className="mt-8 bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
-          <h2 className="text-2xl font-bold mb-4 text-emerald-400">Growth Projection</h2>
-          <ProjectionChart />
-        </div>
+          <div className="bg-primary-500/10 backdrop-blur-sm p-6 rounded-lg shadow-lg border border-primary-500/20">
+            <h2 className="text-2xl font-bold mb-4 text-primary-200 drop-shadow-[0_0_8px_rgba(221,214,254,0.5)]">Growth Projection</h2>
+            <ProjectionChart />
+          </div>
         </div>
       </main>
     </div>

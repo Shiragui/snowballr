@@ -11,19 +11,19 @@ export default function ProjectionChart() {
       width: chartContainerRef.current.clientWidth,
       height: 400,
       layout: {
-        background: { color: '#1f2937' },
-        textColor: '#9ca3af',
+        background: { color: 'rgba(139, 92, 246, 0.1)' },
+        textColor: '#ddd6fe',
       },
       grid: {
-        vertLines: { color: '#374151' },
-        horzLines: { color: '#374151' },
+        vertLines: { color: 'rgba(139, 92, 246, 0.2)' },
+        horzLines: { color: 'rgba(139, 92, 246, 0.2)' },
       },
       timeScale: {
-        borderColor: '#374151',
+        borderColor: 'rgba(139, 92, 246, 0.3)',
         timeVisible: true,
       },
       rightPriceScale: {
-        borderColor: '#374151',
+        borderColor: 'rgba(139, 92, 246, 0.3)',
       },
       watermark: {
         visible: false,
@@ -31,9 +31,9 @@ export default function ProjectionChart() {
     });
 
     const areaSeries = chart.addAreaSeries({
-      lineColor: '#10b981',
-      topColor: 'rgba(16, 185, 129, 0.4)',
-      bottomColor: 'rgba(16, 185, 129, 0.05)',
+      lineColor: '#8b5cf6',
+      topColor: 'rgba(139, 92, 246, 0.4)',
+      bottomColor: 'rgba(139, 92, 246, 0.05)',
       lineWidth: 2,
     });
 

@@ -26,46 +26,46 @@ export default function GrowthCalculator({ onData }) {
   };
 
   return (
-    <div className="bg-gray-800 rounded-xl p-4 mt-6 shadow-md">
-      <h3 className="text-lg font-semibold mb-4">Growth Simulator</h3>
+    <div className="bg-primary-500/10 backdrop-blur-sm rounded-xl p-6 shadow-md border border-primary-500/20">
+      <h3 className="text-lg font-semibold mb-6 text-primary-200 drop-shadow-[0_0_6px_rgba(221,214,254,0.4)]">Growth Simulator</h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-        <div>
-          <label className="text-gray-400 text-sm">Initial Investment</label>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="flex flex-col">
+          <label className="text-primary-300 text-sm font-medium mb-2">Initial Investment</label>
           <input
             type="number"
             value={initial}
             onChange={(e) => setInitial(Number(e.target.value))}
-            className="w-full p-2 rounded-lg bg-gray-700 focus:outline-none"
+            className="w-full p-3 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
           />
         </div>
 
-        <div>
-          <label className="text-gray-400 text-sm">Monthly Contribution</label>
+        <div className="flex flex-col">
+          <label className="text-primary-300 text-sm font-medium mb-2">Monthly Contribution</label>
           <input
             type="number"
             value={monthly}
             onChange={(e) => setMonthly(Number(e.target.value))}
-            className="w-full p-2 rounded-lg bg-gray-700 focus:outline-none"
+            className="w-full p-3 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
           />
         </div>
 
-        <div>
-          <label className="text-gray-400 text-sm">Years</label>
+        <div className="flex flex-col">
+          <label className="text-primary-300 text-sm font-medium mb-2">Years</label>
           <input
             type="number"
             value={years}
             onChange={(e) => setYears(Number(e.target.value))}
-            className="w-full p-2 rounded-lg bg-gray-700 focus:outline-none"
+            className="w-full p-3 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
           />
         </div>
 
-        <div>
-          <label className="text-gray-400 text-sm">Profile</label>
+        <div className="flex flex-col">
+          <label className="text-primary-300 text-sm font-medium mb-2">Profile</label>
           <select
             value={profile}
             onChange={(e) => setProfile(e.target.value)}
-            className="w-full p-2 rounded-lg bg-gray-700 focus:outline-none"
+            className="w-full p-3 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
           >
             <option value="conservative">Conservative</option>
             <option value="average">Average</option>
@@ -76,7 +76,7 @@ export default function GrowthCalculator({ onData }) {
 
       <button
         onClick={handleCalculate}
-        className="bg-emerald-400 hover:bg-emerald-500 text-gray-900 font-semibold px-4 py-2 rounded-lg"
+        className="bg-primary-400 hover:bg-primary-500 text-gray-900 font-semibold px-6 py-3 rounded-lg transition-colors"
       >
         Calculate
       </button>
