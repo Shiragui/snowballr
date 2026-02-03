@@ -157,7 +157,7 @@ export default function GrowthCalculator({ etf, onData }) {
 
   return (
     <div className="bg-primary-500/10 backdrop-blur-sm rounded-xl p-6 shadow-md border border-primary-500/20 sticky top-6">
-      <h3 className="text-lg font-semibold mb-6 text-primary-200 drop-shadow-[0_0_6px_rgba(221,214,254,0.4)]">Prediction</h3>
+      <h3 className="text-lg font-semibold mb-6 text-primary-300 drop-shadow-[0_0_6px_rgba(221,214,254,0.4)]">Prediction</h3>
 
       <div className="space-y-4">
         {/* Initial Deposit */}

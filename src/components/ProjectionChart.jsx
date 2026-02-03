@@ -27,13 +27,90 @@ const generateStockPriceData = (ticker, days = 365) => {
   return data;
 };
 
-export default function ProjectionChart({ data = [], mode = "projection", etf }) {
+export default function ProjectionChart({ data = [], mode = "projection", etf, onResize }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const depositsSeriesRef = useRef(null);
   const customSeriesRef = useRef(null);
   const tooltipRef = useRef(null);
+
+  // Handle chart resize - separate effect that runs after chart is created
+  useEffect(() => {
+    if (!chartRef.current || !chartContainerRef.current) return;
+
+    const handleResize = () => {
+      if (chartRef.current && chartContainerRef.current) {
+        const width = chartContainerRef.current.clientWidth;
+        const height = chartContainerRef.current.clientHeight;
+        if (width > 0 && height > 0) {
+          // Use resize method if available, otherwise use applyOptions
+          if (typeof chartRef.current.resize === 'function') {
+            chartRef.current.resize(width, height);
+          } else {
+            chartRef.current.applyOptions({
+              width: width,
+              height: height,
+            });
+          }
+        }
+      }
+    };
+
+    // Use a small delay to ensure DOM has updated after resize
+    let resizeTimeout;
+    const resizeObserver = new ResizeObserver((entries) => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        requestAnimationFrame(() => {
+          handleResize();
+        });
+      }, 10);
+    });
+
+    resizeObserver.observe(chartContainerRef.current);
+    
+    // Also observe the parent container in case it changes
+    if (chartContainerRef.current.parentElement) {
+      resizeObserver.observe(chartContainerRef.current.parentElement);
+    }
+    
+    // Initial resize with a small delay
+    setTimeout(() => {
+      handleResize();
+    }, 100);
+    
+    // Expose resize function to parent if needed
+    if (onResize) {
+      onResize(handleResize);
+    }
+
+    return () => {
+      clearTimeout(resizeTimeout);
+      resizeObserver.disconnect();
+    };
+  }, [mode, data, etf, onResize]);
+  
+  // Force resize when container dimensions might have changed
+  useEffect(() => {
+    if (chartRef.current && chartContainerRef.current) {
+      const timeout = setTimeout(() => {
+        const width = chartContainerRef.current.clientWidth;
+        const height = chartContainerRef.current.clientHeight;
+        if (width > 0 && height > 0 && chartRef.current) {
+          if (typeof chartRef.current.resize === 'function') {
+            chartRef.current.resize(width, height);
+          } else {
+            chartRef.current.applyOptions({
+              width: width,
+              height: height,
+            });
+          }
+        }
+      }, 50);
+      return () => clearTimeout(timeout);
+    }
+  }, [data.length]); // Trigger when data changes
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -340,9 +417,11 @@ export default function ProjectionChart({ data = [], mode = "projection", etf })
       style={{ 
         width: '100%', 
         height: '100%',
-        flex: '1 1 auto',
         position: 'relative',
-        minHeight: '500px'
+        minHeight: '400px',
+        flex: '1 1 auto',
+        display: 'flex',
+        flexDirection: 'column'
       }} 
       className="chart-container rounded-lg overflow-hidden"
     />
