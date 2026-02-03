@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { createChart } from 'lightweight-charts';
 
-export default function ProjectionChart() {
+export default function ProjectionChart({ data = [] }) {
   const chartContainerRef = useRef(null);
+  const chartRef = useRef(null);
+  const seriesRef = useRef(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -37,13 +39,24 @@ export default function ProjectionChart() {
       lineWidth: 2,
     });
 
-    areaSeries.setData([
-      { time: '2024-01-01', value: 10000 },
-      { time: '2024-06-01', value: 10350 },
-      { time: '2025-01-01', value: 10700 },
-      { time: '2025-06-01', value: 11070 },
-      { time: '2026-01-01', value: 11449 },
-    ]);
+    chartRef.current = chart;
+    seriesRef.current = areaSeries;
+
+    // Set initial data or default
+    if (data.length > 0) {
+      const chartData = data.map(item => ({
+        time: `${2024 + item.year}-01-01`,
+        value: item.balance
+      }));
+      areaSeries.setData(chartData);
+    } else {
+      // Default data
+      areaSeries.setData([
+        { time: '2024-01-01', value: 10000 },
+        { time: '2025-01-01', value: 11000 },
+        { time: '2026-01-01', value: 12100 },
+      ]);
+    }
 
     chart.timeScale().fitContent();
 
@@ -51,6 +64,20 @@ export default function ProjectionChart() {
       chart.remove();
     };
   }, []);
+
+  // Update chart when data changes
+  useEffect(() => {
+    if (seriesRef.current && data.length > 0) {
+      const chartData = data.map(item => ({
+        time: `${2024 + item.year}-01-01`,
+        value: item.balance
+      }));
+      seriesRef.current.setData(chartData);
+      if (chartRef.current) {
+        chartRef.current.timeScale().fitContent();
+      }
+    }
+  }, [data]);
 
   return (
     <div 

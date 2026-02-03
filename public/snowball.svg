@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Background circle with purple tint -->
+  <circle cx="50" cy="50" r="48" fill="#8b5cf6" opacity="0.2"/>
+  
+  <!-- Main snowball circle -->
+  <circle cx="50" cy="50" r="42" fill="#ffffff"/>
+  
+  <!-- Snow texture dots for snowball effect -->
+  <circle cx="38" cy="42" r="3.5" fill="#f0f0f0" opacity="0.9"/>
+  <circle cx="50" cy="38" r="3" fill="#f5f5f5" opacity="0.85"/>
+  <circle cx="62" cy="44" r="2.5" fill="#f0f0f0" opacity="0.9"/>
+  <circle cx="42" cy="52" r="3" fill="#f5f5f5" opacity="0.85"/>
+  <circle cx="58" cy="55" r="2.5" fill="#f0f0f0" opacity="0.9"/>
+  <circle cx="46" cy="62" r="2.5" fill="#f5f5f5" opacity="0.85"/>
+  <circle cx="54" cy="68" r="3" fill="#f0f0f0" opacity="0.9"/>
+  <circle cx="35" cy="58" r="2" fill="#f5f5f5" opacity="0.8"/>
+  <circle cx="65" cy="60" r="2" fill="#f5f5f5" opacity="0.8"/>
+  
+  <!-- Subtle shadow for depth -->
+  <ellipse cx="50" cy="78" rx="32" ry="6" fill="#8b5cf6" opacity="0.15"/>
+</svg>

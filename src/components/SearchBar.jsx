@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function SearchBar({ value, onChange, onSelect, suggestions, selectedETF }) {
+export default function SearchBar({ value, onChange, onSelect, onFocus, onBlur, suggestions, selectedETF }) {
   return (
     <div className="relative w-full">
       <div className="relative flex items-center">
@@ -17,6 +17,8 @@ export default function SearchBar({ value, onChange, onSelect, suggestions, sele
           type="text"
           value={value}
           onChange={onChange}
+          onFocus={onFocus}
+          onBlur={onBlur}
           placeholder={selectedETF ? "" : "Search ETFs..."}
           className="flex-1 min-w-0 pl-3 pr-10 py-3 bg-transparent placeholder-primary-300/70 text-primary-200 focus:outline-none"
         />
