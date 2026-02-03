@@ -5,7 +5,6 @@ export default function GrowthCalculator({ etf, onData }) {
   const [yearsOfGrowth, setYearsOfGrowth] = useState(5);
   const [contributionAmount, setContributionAmount] = useState(100);
   const [contributionFrequency, setContributionFrequency] = useState("monthly");
-  const [compoundFrequency, setCompoundFrequency] = useState("monthly");
 
   // Calculate rate based on ETF's average return
   // For longer time periods, we might want to be slightly more conservative
@@ -23,20 +22,22 @@ export default function GrowthCalculator({ etf, onData }) {
     if (etf) {
       calculateGrowth();
     }
-  }, [initialDeposit, yearsOfGrowth, contributionAmount, contributionFrequency, compoundFrequency, etf]);
+  }, [initialDeposit, yearsOfGrowth, contributionAmount, contributionFrequency, etf]);
 
   const calculateGrowth = () => {
     const rate = rateOfReturn;
     const data = [];
     let balance = initialDeposit;
     
-    // Process month by month for accuracy
+    // Start with initial deposit (month 0 / year 0)
+    data.push({ month: 0, year: 0, balance: Math.round(balance) });
+    
+    // Process month by month - stocks compound continuously, so we use monthly compounding
     const totalMonths = yearsOfGrowth * 12;
-    const monthlyRate = compoundFrequency === "monthly" ? rate / 12 : 0;
-    const annualRate = compoundFrequency === "annually" ? rate : 0;
+    const monthlyRate = rate / 12; // Annual rate divided by 12 for monthly compounding
 
     for (let month = 1; month <= totalMonths; month++) {
-      // Add contribution
+      // Add contribution first
       if (contributionFrequency === "monthly") {
         balance += contributionAmount;
       } else if (contributionFrequency === "annually" && month % 12 === 1) {
@@ -44,18 +45,11 @@ export default function GrowthCalculator({ etf, onData }) {
         balance += contributionAmount;
       }
       
-      // Compound interest
-      if (compoundFrequency === "monthly") {
-        balance = balance * (1 + monthlyRate);
-      } else if (compoundFrequency === "annually" && month % 12 === 0) {
-        // Compound annually at end of each year
-        balance = balance * (1 + annualRate);
-      }
+      // Apply monthly growth (stocks compound continuously, monthly is a good approximation)
+      balance = balance * (1 + monthlyRate);
       
-      // Record data at end of each year
-      if (month % 12 === 0) {
-        data.push({ year: month / 12, balance: Math.round(balance) });
-      }
+      // Record data for every month
+      data.push({ month, year: month / 12, balance: Math.round(balance) });
     }
 
     if (onData) {
@@ -157,34 +151,7 @@ export default function GrowthCalculator({ etf, onData }) {
               className="w-full px-3 py-2.5 rounded-lg bg-primary-500/15 backdrop-blur-sm border border-primary-500/20 text-primary-200 cursor-not-allowed"
             />
           </div>
-          <p className="text-primary-300/70 text-xs mt-1">Based on {etf.ticker} average return</p>
-        </div>
-
-        {/* Compound Frequency */}
-        <div className="flex flex-col">
-          <label className="text-primary-300 text-sm font-medium mb-2">Compound frequency</label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCompoundFrequency("monthly")}
-              className={`flex-1 py-2.5 rounded-lg border transition-colors ${
-                compoundFrequency === "monthly"
-                  ? "bg-primary-400/30 border-primary-400 text-primary-200"
-                  : "bg-primary-500/10 border-primary-500/20 text-primary-300 hover:border-primary-400/40"
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setCompoundFrequency("annually")}
-              className={`flex-1 py-2.5 rounded-lg border transition-colors ${
-                compoundFrequency === "annually"
-                  ? "bg-primary-400/30 border-primary-400 text-primary-200"
-                  : "bg-primary-500/10 border-primary-500/20 text-primary-300 hover:border-primary-400/40"
-              }`}
-            >
-              Annually
-            </button>
-          </div>
+          <p className="text-primary-300/70 text-xs mt-1">Based on {etf.ticker} average annual return</p>
         </div>
 
         {/* Contribution Amount */}
