@@ -14,6 +14,7 @@ export default function App() {
   const [chartMode, setChartMode] = useState("price"); // "projection" or "price"
   const [chartSize, setChartSize] = useState(65); // Default 65% for chart, 35% for calculator
   const [metricsSize, setMetricsSize] = useState(20); // Default 20% for metrics
+  const [timePeriod, setTimePeriod] = useState("1Y"); // Time period for stock price chart
   const chartResizeRef = useRef(null);
   
   // Trigger chart resize when panel sizes change
@@ -37,27 +38,47 @@ export default function App() {
             <h2 className="text-2xl font-bold text-primary-200 drop-shadow-[0_0_8px_rgba(221,214,254,0.5)]">
               {chartMode === "projection" ? "Growth Projection" : "Stock Price"}
             </h2>
-            <div className="flex gap-2 bg-primary-500/10 rounded-lg p-1 border border-primary-500/20">
-              <button
-                onClick={() => setChartMode("price")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  chartMode === "price"
-                    ? "bg-primary-400/30 text-primary-200"
-                    : "text-primary-300 hover:text-primary-200"
-                }`}
-              >
-                Price
-              </button>
-              <button
-                onClick={() => setChartMode("projection")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  chartMode === "projection"
-                    ? "bg-primary-400/30 text-primary-200"
-                    : "text-primary-300 hover:text-primary-200"
-                }`}
-              >
-                Projection
-              </button>
+            <div className="flex items-center gap-3">
+              {/* Time period selector - only show in price mode */}
+              {chartMode === "price" && (
+                <div className="flex gap-1 bg-primary-500/10 rounded-lg p-1 border border-primary-500/20">
+                  {['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'All'].map((period) => (
+                    <button
+                      key={period}
+                      onClick={() => setTimePeriod(period)}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                        timePeriod === period
+                          ? "bg-primary-400/30 text-primary-200"
+                          : "text-primary-300 hover:text-primary-200"
+                      }`}
+                    >
+                      {period}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 bg-primary-500/10 rounded-lg p-1 border border-primary-500/20">
+                <button
+                  onClick={() => setChartMode("price")}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    chartMode === "price"
+                      ? "bg-primary-400/30 text-primary-200"
+                      : "text-primary-300 hover:text-primary-200"
+                  }`}
+                >
+                  Price
+                </button>
+                <button
+                  onClick={() => setChartMode("projection")}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    chartMode === "projection"
+                      ? "bg-primary-400/30 text-primary-200"
+                      : "text-primary-300 hover:text-primary-200"
+                  }`}
+                >
+                  Projection
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -83,7 +104,7 @@ export default function App() {
                 >
                   {/* Chart Section */}
                   <div className="h-full w-full bg-primary-500/10 backdrop-blur-sm p-6 rounded-lg shadow-lg border border-primary-500/20 flex flex-col" style={{ minWidth: 0, minHeight: 0, position: 'relative' }}>
-                    <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} onResize={(fn) => { chartResizeRef.current = fn; }} />
+                    <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} onResize={(fn) => { chartResizeRef.current = fn; }} />
                   </div>
                   {/* Calculator Section */}
                   <div className="h-full w-full overflow-y-auto bg-primary-500/10 backdrop-blur-sm rounded-lg border border-primary-500/20" style={{ minWidth: 0 }}>
@@ -93,7 +114,7 @@ export default function App() {
               ) : (
                 /* Chart only in price mode */
                 <div className="h-full w-full bg-primary-500/10 backdrop-blur-sm p-6 rounded-lg shadow-lg border border-primary-500/20 flex flex-col" style={{ minWidth: 0, minHeight: 0, position: 'relative' }}>
-                  <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} onResize={(fn) => { chartResizeRef.current = fn; }} />
+                  <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} onResize={(fn) => { chartResizeRef.current = fn; }} />
                 </div>
               )}
             </div>

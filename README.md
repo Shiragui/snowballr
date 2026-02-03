@@ -9,7 +9,8 @@ A clean, accessible ETF research and growth simulation Frontend UI Demo.
 - **ETF Search**: Quick search for popular ETFs (VOO, SPY, QQQ, etc.)
 - **ETF Details**: View key metrics like expense ratio, returns, volatility, and dividend yield
 - **Growth Simulator**: Calculate potential investment growth over time with monthly contributions
-- **Interactive Charts**: Visualize investment projections
+- **Interactive Charts**: Visualize investment projections with real stock data
+- **Real Stock Data**: Live stock prices and historical data via Alpha Vantage API
 
 ## Tech Stack
 
@@ -17,20 +18,52 @@ A clean, accessible ETF research and growth simulation Frontend UI Demo.
 - **Vite** - Build tool
 - **Tailwind CSS** - Styling
 - **lightweight-charts** - Chart visualizations
+- **Alpha Vantage API** - Real stock market data
+
+## Setup
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Get Alpha Vantage API Key (Optional but Recommended)
+
+To get real stock data instead of mock data:
+
+1. Sign up for a free API key at [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
+2. Create a `.env` file in the root directory:
+   ```
+   VITE_ALPHA_VANTAGE_API_KEY=your_api_key_here
+   ```
+3. Restart your dev server
+
+**Note:** The free tier allows 5 API calls per minute and 500 calls per day. The app includes caching to minimize API usage. If no API key is provided, the app will use fallback mock data.
+
+### 3. Run Development Server
+
+```bash
+npm run dev
+```
 
 ## Usage
 
-1. Search for an ETF by ticker symbol (e.g., VOO, SPY)
+1. Search for an ETF by ticker symbol (e.g., VOO, SPY, QQQ)
 2. View detailed information about the selected ETF
-3. Use the Growth Simulator to project investment returns
-4. Adjust initial investment, monthly contributions, and time horizon
+3. Switch between "Price" and "Projection" modes to see:
+   - **Price**: Real historical stock price data (last 365 days)
+   - **Projection**: Future growth projections based on your inputs
+4. Use the Growth Simulator to project investment returns
+5. Adjust initial investment, monthly contributions, and time horizon
+6. Compare with other stocks or custom rates
 
-## Future Improvements: Connect Backend
+## Future Improvements
 
-- Connect a live database
+- Real-time streaming data via WebSocket
 - Compare multiple ETFs side-by-side
-- Historical performance charts
 - Portfolio tracking
+- More detailed financial metrics
 
 ---
 

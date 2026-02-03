@@ -1,39 +1,71 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
+import { fetchStockData, fetchLatestPrice } from '../services/stockData';
 
-// Generate mock stock price data
-const generateStockPriceData = (ticker, days = 365) => {
-  const data = [];
-  const basePrice = ticker === "QQQ" ? 380 : ticker === "VOO" ? 450 : 420;
-  let currentPrice = basePrice;
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
-
-  for (let i = 0; i < days; i++) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    
-    // Random walk with slight upward trend
-    const change = (Math.random() - 0.48) * 3; // Slight upward bias
-    currentPrice = Math.max(50, currentPrice + change);
-    
-    const dateStr = date.toISOString().split('T')[0];
-    data.push({
-      time: dateStr,
-      value: Math.round(currentPrice * 100) / 100
-    });
-  }
-  
-  return data;
-};
-
-export default function ProjectionChart({ data = [], mode = "projection", etf, onResize }) {
+export default function ProjectionChart({ data = [], mode = "projection", etf, timePeriod = "1Y", onResize }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const depositsSeriesRef = useRef(null);
   const customSeriesRef = useRef(null);
   const tooltipRef = useRef(null);
+  const [stockData, setStockData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const streamingIntervalRef = useRef(null);
+
+  // Fetch real stock data when in price mode
+  useEffect(() => {
+    if (mode === "price" && etf?.ticker) {
+      setLoading(true);
+      fetchStockData(etf.ticker, timePeriod)
+        .then(data => {
+          setStockData(data);
+          setLoading(false);
+        })
+        .catch(error => {
+          console.error('Error loading stock data:', error);
+          setLoading(false);
+        });
+    } else {
+      setStockData([]);
+    }
+  }, [mode, etf?.ticker, timePeriod]);
+
+  // Real-time streaming updates (polling every 5 seconds for intraday)
+  useEffect(() => {
+    if (mode === "price" && etf?.ticker && seriesRef.current) {
+      // Clear any existing interval
+      if (streamingIntervalRef.current) {
+        clearInterval(streamingIntervalRef.current);
+      }
+
+      // Only stream for 1D period (intraday data)
+      if (timePeriod === '1D') {
+        const updatePrice = async () => {
+          const latest = await fetchLatestPrice(etf.ticker);
+          if (latest && seriesRef.current) {
+            // Update chart with latest price
+            try {
+              seriesRef.current.update(latest);
+            } catch (error) {
+              // If update fails, might need to add new point
+              console.log('Update failed, may need to add new point');
+            }
+          }
+        };
+
+        // Update immediately and then every 5 seconds
+        updatePrice();
+        streamingIntervalRef.current = setInterval(updatePrice, 5000);
+      }
+
+      return () => {
+        if (streamingIntervalRef.current) {
+          clearInterval(streamingIntervalRef.current);
+        }
+      };
+    }
+  }, [mode, etf?.ticker, timePeriod, seriesRef.current]);
 
   // Handle chart resize - separate effect that runs after chart is created
   useEffect(() => {
@@ -369,14 +401,13 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, o
         }
       });
     } else {
-      // Stock price data
-      if (etf) {
-        chartData = generateStockPriceData(etf.ticker, 365);
-      } else {
-        chartData = [];
-      }
+      // Stock price data - use real data from API
+      chartData = stockData;
       
       if (chartData.length > 0) {
+        // Check if we're using intraday data (Unix timestamps) or daily data (date strings)
+        const isIntraday = typeof chartData[0].time === 'number';
+        
         const lineSeries = chart.addLineSeries({
           color: '#8b5cf6',
           lineWidth: 2,
@@ -386,6 +417,14 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, o
             minMove: 0.01,
           },
         });
+        
+        // Configure time scale based on data type
+        if (isIntraday) {
+          chart.timeScale().applyOptions({
+            timeVisible: true,
+            secondsVisible: false,
+          });
+        }
         
         lineSeries.setData(chartData);
         seriesRef.current = lineSeries;
@@ -409,7 +448,7 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, o
         tooltipRef.current = null;
       }
     };
-  }, [mode, data, etf]);
+  }, [mode, data, etf, stockData]);
 
   return (
     <div 
