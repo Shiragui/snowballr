@@ -68,7 +68,11 @@ export async function fetchStockData(symbol, period = '1Y') {
 
     const result = data.chart.result[0];
     const timestamps = result.timestamp;
-    const closes = result.indicators.quote[0].close;
+    const quote = result.indicators.quote[0];
+    const closes = quote.close;
+    const opens = quote.open;
+    const highs = quote.high;
+    const lows = quote.low;
 
     if (!timestamps || !closes) {
       throw new Error('Invalid data format');
@@ -94,18 +98,28 @@ export async function fetchStockData(symbol, period = '1Y') {
           timeValue = date.toISOString().split('T')[0];
         }
         
-        return {
+        const baseData = {
           time: timeValue,
           value: close
         };
+        
+        // Add OHLC for candlestick charts
+        if (opens && highs && lows && opens[index] && highs[index] && lows[index]) {
+          const open = opens[index];
+          const high = highs[index];
+          const low = lows[index];
+          
+          // Only add if values are valid numbers
+          if (!isNaN(open) && !isNaN(high) && !isNaN(low)) {
+            baseData.open = open;
+            baseData.high = high;
+            baseData.low = low;
+          }
+        }
+        
+        return baseData;
       })
       .filter(item => item !== null)
-
-    // Cache the result
-    cache.set(cacheKey, {
-      data: chartData,
-      timestamp: Date.now()
-    });
 
     // Cache the result
     cache.set(cacheKey, {
@@ -116,10 +130,12 @@ export async function fetchStockData(symbol, period = '1Y') {
     return chartData;
   } catch (error) {
     console.error(`Error fetching stock data for ${symbol}:`, error);
-    console.error('Falling back to mock data. This usually means CORS is blocked.');
-    // Return fallback data on error
+    console.error('Falling back to mock data. This usually means CORS is blocked or API rate limit hit.');
+    // Return fallback data on error - but log it clearly
     const { days } = getIntervalForPeriod(period);
-    return getFallbackData(symbol, days);
+    const fallbackData = getFallbackData(symbol, days);
+    console.warn('Using fallback data - API request failed. Check network tab for CORS errors.');
+    return fallbackData;
   }
 }
 
@@ -176,6 +192,71 @@ export async function fetchLatestPrice(symbol) {
 }
 
 /**
+ * Search for stocks by ticker or company name
+ * @param {string} query - Search query (ticker or company name)
+ * @returns {Promise<Array>} Array of stock objects with ticker, name, exchange
+ */
+export async function searchStocks(query) {
+  if (!query || query.trim() === '') {
+    return [];
+  }
+
+  const cacheKey = `search-${query}`;
+  const cached = cache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < 60000) { // 1 minute cache
+    return cached.data;
+  }
+
+  try {
+    // Yahoo Finance search endpoint
+    const searchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
+    
+    const response = await fetch(proxyUrl);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    let data = await response.json();
+    
+    // If using proxy, extract the actual data
+    if (data.contents) {
+      data = JSON.parse(data.contents);
+    }
+
+    if (!data.quotes || !Array.isArray(data.quotes)) {
+      return [];
+    }
+
+    // Format results to match ETF structure
+    const results = data.quotes
+      .filter(quote => quote.quoteType === 'EQUITY' || quote.quoteType === 'ETF' || quote.quoteType === 'INDEX')
+      .map(quote => ({
+        ticker: quote.symbol,
+        name: quote.longname || quote.shortname || quote.symbol,
+        exchange: quote.exchange || '',
+        // Add default values for ETF-specific fields (will be fetched when selected)
+        expenseRatio: 'N/A',
+        avgReturn: 'N/A',
+        volatility: 'Medium',
+        dividendYield: 'N/A'
+      }));
+
+    cache.set(cacheKey, {
+      data: results,
+      timestamp: Date.now()
+    });
+
+    return results;
+  } catch (error) {
+    console.error(`Error searching stocks for "${query}":`, error);
+    return [];
+  }
+}
+
+/**
  * Get real-time quote data (current price)
  * @param {string} symbol - Stock ticker symbol
  * @returns {Promise<Object>} Quote data with price, change, etc.
@@ -212,16 +293,52 @@ export async function fetchStockQuote(symbol) {
     const meta = result.meta;
     const quote = result.indicators.quote[0];
     
+    // Get current price - prioritize regularMarketPrice
+    let price = meta.regularMarketPrice;
+    if (!price || price === 0 || isNaN(price)) {
+      // Fallback to last close price
+      if (quote.close && quote.close.length > 0) {
+        const validCloses = quote.close.filter(c => c !== null && !isNaN(c) && c > 0);
+        if (validCloses.length > 0) {
+          price = validCloses[validCloses.length - 1];
+        }
+      }
+    }
+    if (!price || price === 0 || isNaN(price)) {
+      price = meta.previousClose || 0;
+    }
+    
+    // Get previous close - this is yesterday's closing price
+    let previousClose = meta.previousClose;
+    if (!previousClose || previousClose === 0 || isNaN(previousClose)) {
+      // Try to get from quote data (second to last close)
+      if (quote.close && quote.close.length > 1) {
+        const validCloses = quote.close.filter(c => c !== null && !isNaN(c) && c > 0);
+        if (validCloses.length > 1) {
+          previousClose = validCloses[validCloses.length - 2];
+        } else if (validCloses.length === 1) {
+          previousClose = validCloses[0];
+        }
+      }
+    }
+    if (!previousClose || previousClose === 0 || isNaN(previousClose)) {
+      previousClose = price;
+    }
+    
+    // Calculate change from previous close (today's change)
+    const change = price && previousClose && !isNaN(price) && !isNaN(previousClose) ? (price - previousClose) : 0;
+    const changePercent = previousClose && previousClose !== 0 && !isNaN(change) ? (change / previousClose * 100) : 0;
+    
     const quoteData = {
-      symbol: meta.symbol,
-      price: meta.regularMarketPrice || quote.close[quote.close.length - 1],
-      change: meta.regularMarketPrice - meta.previousClose,
-      changePercent: ((meta.regularMarketPrice - meta.previousClose) / meta.previousClose * 100).toFixed(2),
-      volume: meta.regularMarketVolume,
-      high: meta.regularMarketDayHigh,
-      low: meta.regularMarketDayLow,
-      open: meta.regularMarketOpen,
-      previousClose: meta.previousClose
+      symbol: meta.symbol || symbol,
+      price: price,
+      change: change,
+      changePercent: changePercent,
+      volume: meta.regularMarketVolume || 0,
+      high: meta.regularMarketDayHigh || price,
+      low: meta.regularMarketDayLow || price,
+      open: meta.regularMarketOpen || price,
+      previousClose: previousClose
     };
 
     cache.set(cacheKey, {

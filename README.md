@@ -20,33 +20,6 @@ A clean, accessible ETF research and growth simulation Frontend UI Demo.
 - **lightweight-charts** - Chart visualizations
 - **Alpha Vantage API** - Real stock market data
 
-## Setup
-
-### 1. Install Dependencies
-
-```bash
-npm install
-```
-
-### 2. Get Alpha Vantage API Key (Optional but Recommended)
-
-To get real stock data instead of mock data:
-
-1. Sign up for a free API key at [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
-2. Create a `.env` file in the root directory:
-   ```
-   VITE_ALPHA_VANTAGE_API_KEY=your_api_key_here
-   ```
-3. Restart your dev server
-
-**Note:** The free tier allows 5 API calls per minute and 500 calls per day. The app includes caching to minimize API usage. If no API key is provided, the app will use fallback mock data.
-
-### 3. Run Development Server
-
-```bash
-npm run dev
-```
-
 ## Usage
 
 1. Search for an ETF by ticker symbol (e.g., VOO, SPY, QQQ)

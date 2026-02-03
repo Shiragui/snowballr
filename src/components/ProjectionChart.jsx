@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
 import { fetchStockData, fetchLatestPrice } from '../services/stockData';
 
-export default function ProjectionChart({ data = [], mode = "projection", etf, timePeriod = "1Y", onResize }) {
+export default function ProjectionChart({ data = [], mode = "projection", etf, timePeriod = "1Y", chartView = "line", onResize, onDataChange }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -20,6 +20,9 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
       fetchStockData(etf.ticker, timePeriod)
         .then(data => {
           setStockData(data);
+          if (onDataChange) {
+            onDataChange(data);
+          }
           setLoading(false);
         })
         .catch(error => {
@@ -28,10 +31,13 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         });
     } else {
       setStockData([]);
+      if (onDataChange) {
+        onDataChange([]);
+      }
     }
-  }, [mode, etf?.ticker, timePeriod]);
+  }, [mode, etf?.ticker, timePeriod, onDataChange]);
 
-  // Real-time streaming updates (polling every 5 seconds for intraday)
+  // Real-time streaming updates (polling every 10 seconds for intraday)
   useEffect(() => {
     if (mode === "price" && etf?.ticker && seriesRef.current) {
       // Clear any existing interval
@@ -42,21 +48,39 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
       // Only stream for 1D period (intraday data)
       if (timePeriod === '1D') {
         const updatePrice = async () => {
-          const latest = await fetchLatestPrice(etf.ticker);
-          if (latest && seriesRef.current) {
-            // Update chart with latest price
-            try {
-              seriesRef.current.update(latest);
-            } catch (error) {
-              // If update fails, might need to add new point
-              console.log('Update failed, may need to add new point');
+          try {
+            const latest = await fetchLatestPrice(etf.ticker);
+            if (latest && seriesRef.current && latest.value && !isNaN(latest.value)) {
+              // Update chart with latest price
+              try {
+                seriesRef.current.update(latest);
+                // Also update stockData state to keep it in sync
+                setStockData(prev => {
+                  const newData = [...prev];
+                  if (newData.length > 0) {
+                    // Update last point or add new one
+                    const lastPoint = newData[newData.length - 1];
+                    if (lastPoint.time === latest.time) {
+                      newData[newData.length - 1] = latest;
+                    } else {
+                      newData.push(latest);
+                    }
+                  }
+                  return newData;
+                });
+              } catch (error) {
+                // If update fails, might need to add new point
+                console.log('Update failed, may need to add new point:', error);
+              }
             }
+          } catch (error) {
+            console.error('Error fetching latest price:', error);
           }
         };
 
-        // Update immediately and then every 5 seconds
+        // Update immediately and then every 10 seconds
         updatePrice();
-        streamingIntervalRef.current = setInterval(updatePrice, 5000);
+        streamingIntervalRef.current = setInterval(updatePrice, 10000);
       }
 
       return () => {
@@ -147,13 +171,36 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Clean up existing chart
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
+    // Clean up existing series (but keep chart if it exists and we're just switching views)
+    if (seriesRef.current && chartRef.current && mode === "price") {
+      try {
+        chartRef.current.removeSeries(seriesRef.current);
+      } catch (e) {
+        // Series might already be removed
+      }
       seriesRef.current = null;
+    }
+    
+    // Clean up all series for projection mode or if chart doesn't exist
+    if (depositsSeriesRef.current && chartRef.current) {
+      try {
+        chartRef.current.removeSeries(depositsSeriesRef.current);
+      } catch (e) {}
       depositsSeriesRef.current = null;
+    }
+    if (customSeriesRef.current && chartRef.current) {
+      try {
+        chartRef.current.removeSeries(customSeriesRef.current);
+      } catch (e) {}
       customSeriesRef.current = null;
+    }
+    
+    // Only remove entire chart if mode changed or chart doesn't exist
+    if (!chartRef.current || (mode === "projection" && chartRef.current)) {
+      if (chartRef.current) {
+        chartRef.current.remove();
+      }
+      chartRef.current = null;
     }
     
     // Create tooltip element
@@ -167,43 +214,48 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
       tooltipRef.current = tooltip;
     }
 
-    const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth,
-      height: chartContainerRef.current.clientHeight,
-      layout: {
-        background: { color: 'rgba(139, 92, 246, 0.1)' },
-        textColor: '#ddd6fe',
-      },
-      grid: {
-        vertLines: { color: 'rgba(139, 92, 246, 0.2)' },
-        horzLines: { color: 'rgba(139, 92, 246, 0.2)' },
-      },
-      crosshair: {
-        mode: 1, // Normal crosshair mode
-        vertLine: {
-          color: 'rgba(196, 181, 253, 0.5)',
-          width: 1,
-          style: 2, // Dashed line
+    // Create chart if it doesn't exist
+    let chart = chartRef.current;
+    if (!chart && chartContainerRef.current) {
+      chart = createChart(chartContainerRef.current, {
+        width: chartContainerRef.current.clientWidth,
+        height: chartContainerRef.current.clientHeight,
+        layout: {
+          background: { color: 'rgba(139, 92, 246, 0.1)' },
+          textColor: '#ddd6fe',
         },
-        horzLine: {
-          color: 'rgba(196, 181, 253, 0.5)',
-          width: 1,
-          style: 2, // Dashed line
+        grid: {
+          vertLines: { color: 'rgba(139, 92, 246, 0.2)' },
+          horzLines: { color: 'rgba(139, 92, 246, 0.2)' },
         },
-      },
-      timeScale: {
-        borderColor: 'rgba(139, 92, 246, 0.3)',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: 'rgba(139, 92, 246, 0.3)',
-      },
-      watermark: {
-        visible: false,
-      },
-    });
-
-    chartRef.current = chart;
+        crosshair: {
+          mode: 1, // Normal crosshair mode
+          vertLine: {
+            color: 'rgba(196, 181, 253, 0.5)',
+            width: 1,
+            style: 2, // Dashed line
+          },
+          horzLine: {
+            color: 'rgba(196, 181, 253, 0.5)',
+            width: 1,
+            style: 2, // Dashed line
+          },
+        },
+        timeScale: {
+          borderColor: 'rgba(139, 92, 246, 0.3)',
+          timeVisible: true,
+        },
+        rightPriceScale: {
+          borderColor: 'rgba(139, 92, 246, 0.3)',
+        },
+        watermark: {
+          visible: false,
+        },
+      });
+      chartRef.current = chart;
+    }
+    
+    if (!chart) return;
 
     // Set up initial data
     let chartData = [];
@@ -408,15 +460,96 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         // Check if we're using intraday data (Unix timestamps) or daily data (date strings)
         const isIntraday = typeof chartData[0].time === 'number';
         
-        const lineSeries = chart.addLineSeries({
-          color: '#8b5cf6',
-          lineWidth: 2,
-          priceFormat: {
-            type: 'price',
-            precision: 2,
-            minMove: 0.01,
-          },
-        });
+        // Remove existing series if switching views
+        if (seriesRef.current) {
+          try {
+            chart.removeSeries(seriesRef.current);
+          } catch (e) {
+            // Series might already be removed
+          }
+          seriesRef.current = null;
+        }
+        
+        let series;
+        
+        // Check if we have OHLC data for candlestick
+        const hasOHLC = chartData.some(item => 
+          item.open !== undefined && 
+          item.high !== undefined && 
+          item.low !== undefined &&
+          !isNaN(item.open) &&
+          !isNaN(item.high) &&
+          !isNaN(item.low) &&
+          item.open > 0 &&
+          item.high > 0 &&
+          item.low > 0
+        );
+        
+        if (chartView === 'candlestick' && hasOHLC) {
+          // Candlestick chart
+          series = chart.addCandlestickSeries({
+            upColor: '#10b981',
+            downColor: '#ef4444',
+            borderVisible: false,
+            wickUpColor: '#10b981',
+            wickDownColor: '#ef4444',
+          });
+          
+          const candlestickData = chartData
+            .filter(item => 
+              item.open !== undefined && 
+              item.high !== undefined && 
+              item.low !== undefined &&
+              !isNaN(item.open) &&
+              !isNaN(item.high) &&
+              !isNaN(item.low) &&
+              !isNaN(item.value)
+            )
+            .map(item => ({
+              time: item.time,
+              open: item.open,
+              high: item.high,
+              low: item.low,
+              close: item.value
+            }));
+          
+          if (candlestickData.length > 0) {
+            series.setData(candlestickData);
+          } else {
+            // Fallback to line if no valid candlestick data
+            series = chart.addLineSeries({
+              color: '#8b5cf6',
+              lineWidth: 2,
+              priceFormat: {
+                type: 'price',
+                precision: 2,
+                minMove: 0.01,
+              },
+            });
+            series.setData(chartData.map(item => ({ time: item.time, value: item.value })));
+          }
+        } else if (chartView === 'area') {
+          // Area chart
+          series = chart.addAreaSeries({
+            lineColor: '#8b5cf6',
+            topColor: 'rgba(139, 92, 246, 0.3)',
+            bottomColor: 'rgba(139, 92, 246, 0.1)',
+            lineWidth: 2,
+          });
+          series.setData(chartData.map(item => ({ time: item.time, value: item.value })));
+        } else {
+          // Line chart (default)
+          series = chart.addLineSeries({
+            color: '#8b5cf6',
+            lineWidth: 2,
+            priceFormat: {
+              type: 'price',
+              precision: 2,
+              minMove: 0.01,
+            },
+          });
+          series.setData(chartData.map(item => ({ time: item.time, value: item.value })));
+        }
         
         // Configure time scale based on data type
         if (isIntraday) {
@@ -426,8 +559,7 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
           });
         }
         
-        lineSeries.setData(chartData);
-        seriesRef.current = lineSeries;
+        seriesRef.current = series;
       }
     }
 
@@ -435,6 +567,14 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
       chart.timeScale().fitContent();
     }
 
+    return () => {
+      // Don't remove chart on every render, only on unmount
+      // Series cleanup is handled above
+    };
+  }, [mode, data, etf, stockData, chartView]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
       if (chartRef.current) {
         chartRef.current.remove();
@@ -448,7 +588,7 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         tooltipRef.current = null;
       }
     };
-  }, [mode, data, etf, stockData]);
+  }, []);
 
   return (
     <div 

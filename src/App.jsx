@@ -4,6 +4,7 @@ import ProjectionChart from "./components/ProjectionChart";
 import GrowthCalculator from "./components/GrowthCalculator";
 import ETFMetrics from "./components/ETFMetrics";
 import ResizablePanel from "./components/ResizablePanel";
+import StockQuote from "./components/StockQuote";
 import { etfs } from "./data/etfs";
 
 
@@ -11,10 +12,12 @@ import { etfs } from "./data/etfs";
 export default function App() {
   const [selectedETF, setSelectedETF] = useState(etfs.find(e => e.ticker === "QQQ"));
   const [growthData, setGrowthData] = useState([]);
+  const [stockPriceData, setStockPriceData] = useState([]); // Store stock price data for period calculation
   const [chartMode, setChartMode] = useState("price"); // "projection" or "price"
   const [chartSize, setChartSize] = useState(65); // Default 65% for chart, 35% for calculator
   const [metricsSize, setMetricsSize] = useState(20); // Default 20% for metrics
   const [timePeriod, setTimePeriod] = useState("1Y"); // Time period for stock price chart
+  const [chartView, setChartView] = useState("line"); // "line", "candlestick", "area"
   const chartResizeRef = useRef(null);
   
   // Trigger chart resize when panel sizes change
@@ -35,10 +38,37 @@ export default function App() {
             <Home onSelectETF={setSelectedETF} selectedETF={selectedETF} />
           </div>
           <div className="flex items-center justify-between w-full">
-            <h2 className="text-2xl font-bold text-primary-200 drop-shadow-[0_0_8px_rgba(221,214,254,0.5)]">
-              {chartMode === "projection" ? "Growth Projection" : "Stock Price"}
-            </h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-bold text-primary-200 drop-shadow-[0_0_8px_rgba(221,214,254,0.5)]">
+                {chartMode === "projection" ? "Growth Projection" : "Stock Price"}
+              </h2>
+              {chartMode === "price" && selectedETF && (
+                <StockQuote 
+                  symbol={selectedETF.ticker} 
+                  stockData={stockPriceData}
+                  timePeriod={timePeriod}
+                />
+              )}
+            </div>
             <div className="flex items-center gap-3">
+              {/* Chart view selector - only show in price mode */}
+              {chartMode === "price" && (
+                <div className="flex gap-1 bg-primary-500/10 rounded-lg p-1 border border-primary-500/20">
+                  {['line', 'candlestick', 'area'].map((view) => (
+                    <button
+                      key={view}
+                      onClick={() => setChartView(view)}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize ${
+                        chartView === view
+                          ? "bg-primary-400/30 text-primary-200"
+                          : "text-primary-300 hover:text-primary-200"
+                      }`}
+                    >
+                      {view}
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* Time period selector - only show in price mode */}
               {chartMode === "price" && (
                 <div className="flex gap-1 bg-primary-500/10 rounded-lg p-1 border border-primary-500/20">
@@ -104,7 +134,7 @@ export default function App() {
                 >
                   {/* Chart Section */}
                   <div className="h-full w-full bg-primary-500/10 backdrop-blur-sm p-6 rounded-lg shadow-lg border border-primary-500/20 flex flex-col" style={{ minWidth: 0, minHeight: 0, position: 'relative' }}>
-                    <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} onResize={(fn) => { chartResizeRef.current = fn; }} />
+                    <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} chartView={chartView} onResize={(fn) => { chartResizeRef.current = fn; }} onDataChange={setStockPriceData} />
                   </div>
                   {/* Calculator Section */}
                   <div className="h-full w-full overflow-y-auto bg-primary-500/10 backdrop-blur-sm rounded-lg border border-primary-500/20" style={{ minWidth: 0 }}>
@@ -114,14 +144,14 @@ export default function App() {
               ) : (
                 /* Chart only in price mode */
                 <div className="h-full w-full bg-primary-500/10 backdrop-blur-sm p-6 rounded-lg shadow-lg border border-primary-500/20 flex flex-col" style={{ minWidth: 0, minHeight: 0, position: 'relative' }}>
-                  <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} onResize={(fn) => { chartResizeRef.current = fn; }} />
+                  <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} chartView={chartView} onResize={(fn) => { chartResizeRef.current = fn; }} onDataChange={setStockPriceData} />
                 </div>
               )}
             </div>
             
             {/* Bottom section: Metrics - Resizable with minimum height, always visible */}
             <div className="w-full h-full flex items-center justify-center py-2 overflow-y-auto" style={{ minHeight: '150px' }}>
-              {selectedETF && <ETFMetrics etf={selectedETF} />}
+              {selectedETF && <ETFMetrics etf={selectedETF} stockPriceData={stockPriceData} />}
             </div>
           </ResizablePanel>
         </div>
