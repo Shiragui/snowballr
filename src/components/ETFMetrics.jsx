@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { fetchStockQuote } from '../services/stockData';
 
 // Calculate additional metrics based on ETF data
 const calculateAdditionalMetrics = (etf) => {
+  const avgReturn = Number(etf.avgReturn);
+  const hasAvgReturn = !isNaN(avgReturn) && avgReturn > 0;
+
   // Calculate Sharpe Ratio (simplified - higher return and lower volatility = better)
   const volatilityScore = etf.volatility === "High" ? 1.5 : etf.volatility === "Medium" ? 1.0 : 0.5;
-  const sharpeRatio = ((etf.avgReturn - 2) / volatilityScore).toFixed(2); // Assuming 2% risk-free rate
+  const sharpeRatio = hasAvgReturn ? ((avgReturn - 2) / volatilityScore).toFixed(2) : 'N/A';
   
   // Calculate Price-to-Earnings (mock calculation based on return)
-  const peRatio = (100 / etf.avgReturn).toFixed(1);
+  const peRatio = hasAvgReturn ? (100 / avgReturn).toFixed(1) : 'N/A';
   
   // Assets Under Management (mock - based on ticker popularity)
   const aumMap = {
@@ -29,24 +32,32 @@ const calculateAdditionalMetrics = (etf) => {
 export default function ETFMetrics({ etf, stockPriceData }) {
   const [todayQuote, setTodayQuote] = useState(null);
   const [loadingTodayQuote, setLoadingTodayQuote] = useState(true);
+  const isInitialLoad = useRef(true);
 
   useEffect(() => {
     if (!etf?.ticker) return;
 
+    isInitialLoad.current = true;
+
     const loadTodayQuote = async () => {
-      setLoadingTodayQuote(true);
+      if (isInitialLoad.current) {
+        setLoadingTodayQuote(true);
+      }
       try {
         const data = await fetchStockQuote(etf.ticker);
-        setTodayQuote(data);
+        if (data) setTodayQuote(data);
       } catch (error) {
         console.error('Error loading today\'s quote:', error);
       } finally {
-        setLoadingTodayQuote(false);
+        if (isInitialLoad.current) {
+          setLoadingTodayQuote(false);
+          isInitialLoad.current = false;
+        }
       }
     };
 
     loadTodayQuote();
-    const interval = setInterval(loadTodayQuote, 30000); // Update every 30 seconds
+    const interval = setInterval(loadTodayQuote, 60000);
 
     return () => clearInterval(interval);
   }, [etf?.ticker]);
@@ -55,9 +66,9 @@ export default function ETFMetrics({ etf, stockPriceData }) {
 
   const additionalMetrics = calculateAdditionalMetrics(etf);
   
-  const todayPrice = todayQuote?.price || 0;
-  const todayChange = todayQuote?.change || 0;
-  const todayChangePercent = todayQuote?.changePercent || 0;
+  const todayPrice = Number(todayQuote?.price) || 0;
+  const todayChange = Number(todayQuote?.change) || 0;
+  const todayChangePercent = Number(todayQuote?.changePercent) || 0;
 
   const isPositive = todayChange >= 0;
   const changeColor = isPositive ? 'text-green-400' : 'text-red-400';

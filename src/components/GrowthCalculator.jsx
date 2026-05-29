@@ -6,43 +6,74 @@ export default function GrowthCalculator({ etf, onData }) {
   const [yearsOfGrowth, setYearsOfGrowth] = useState(5);
   const [contributionAmount, setContributionAmount] = useState(100);
   const [contributionFrequency, setContributionFrequency] = useState("monthly");
-  const [compareInput, setCompareInput] = useState(""); // ETF ticker or custom rate percentage
+  const [compareInput, setCompareInput] = useState("");
   const [compareSuggestions, setCompareSuggestions] = useState([]);
   const [compareFocused, setCompareFocused] = useState(false);
-  const [useCustomRate, setUseCustomRate] = useState(false);
-  const [customRate, setCustomRate] = useState(10);
+  const [estimatedRate, setEstimatedRate] = useState(10);
+  const [summary, setSummary] = useState(null);
+  
+  const getDefaultEstimatedRate = (selectedEtf) => {
+    const rate = Number(selectedEtf?.avgReturn);
+    return !isNaN(rate) && rate > 0 ? rate : 10;
+  };
+
+  const parseNum = (value, fallback = 0) => {
+    if (value === '') return fallback;
+    const num = Number(value);
+    return isNaN(num) ? fallback : num;
+  };
+
+  const getNumericHandlers = (value, setValue, { min, max, emptyDefault, clampMinWhileTyping = true }) => ({
+    onFocus: (e) => {
+      if (Number(value) === 0) {
+        setValue('');
+      }
+      e.target.select();
+    },
+    onBlur: () => {
+      if (value === '') {
+        setValue(emptyDefault ?? min ?? 0);
+        return;
+      }
+      let num = Number(value);
+      if (isNaN(num)) {
+        setValue(emptyDefault ?? min ?? 0);
+        return;
+      }
+      if (min !== undefined) num = Math.max(min, num);
+      if (max !== undefined) num = Math.min(max, num);
+      setValue(num);
+    },
+    onChange: (e) => {
+      const raw = e.target.value;
+      if (raw === '') {
+        setValue('');
+        return;
+      }
+      const num = Number(raw);
+      if (isNaN(num)) return;
+      let next = num;
+      if (clampMinWhileTyping && min !== undefined) next = Math.max(min, next);
+      if (max !== undefined) next = Math.min(max, next);
+      setValue(next);
+    },
+  });
   
   // Get available ETFs for comparison
   const allETFs = etfs;
   
   // Find the selected compare ETF
-  const compareETF = compareInput.trim() !== "" && !useCustomRate 
+  const compareETF = compareInput.trim() !== ""
     ? allETFs.find(e => e.ticker.toUpperCase() === compareInput.trim().toUpperCase())
     : null;
   
-  // Get compare rate
-  const getCompareRate = () => {
-    if (useCustomRate) {
-      return customRate / 100;
-    } else if (compareETF) {
-      return compareETF.avgReturn / 100;
+  const compareRateValue = compareETF ? compareETF.avgReturn / 100 : null;
+
+  useEffect(() => {
+    if (etf) {
+      setEstimatedRate(getDefaultEstimatedRate(etf));
     }
-    return null;
-  };
-  
-  const compareRateValue = getCompareRate();
-
-  // Calculate rate based on ETF's average return
-  // For longer time periods, we might want to be slightly more conservative
-  const getRateOfReturn = () => {
-    if (!etf) return 0;
-    const baseRate = etf.avgReturn / 100;
-    // Slightly adjust based on years (longer = slightly more conservative)
-    const adjustment = yearsOfGrowth > 20 ? -0.002 : 0;
-    return Math.max(0, baseRate + adjustment);
-  };
-
-  const rateOfReturn = getRateOfReturn();
+  }, [etf?.ticker]);
 
   // Handle compare input changes with autocomplete
   const handleCompareChange = (e) => {
@@ -84,18 +115,21 @@ export default function GrowthCalculator({ etf, onData }) {
     if (etf) {
       calculateGrowth();
     }
-  }, [initialDeposit, yearsOfGrowth, contributionAmount, contributionFrequency, compareInput, useCustomRate, customRate, etf]);
+  }, [initialDeposit, yearsOfGrowth, contributionAmount, contributionFrequency, compareInput, estimatedRate, etf]);
 
   const calculateGrowth = () => {
-    const rate = rateOfReturn;
+    const deposit = parseNum(initialDeposit, 0);
+    const years = Math.max(1, Math.min(100, parseNum(yearsOfGrowth, 1)));
+    const contribution = parseNum(contributionAmount, 0);
+    const rate = parseNum(estimatedRate, 0) / 100;
     
     // Determine comparison rate
     const compareRate = compareRateValue;
     
     const data = [];
-    let balance = initialDeposit;
-    let compareBalance = compareRate !== null ? initialDeposit : null;
-    let totalDeposits = initialDeposit;
+    let balance = deposit;
+    let compareBalance = compareRate !== null ? deposit : null;
+    let totalDeposits = deposit;
     
     // Start with initial deposit (month 0 / year 0)
     data.push({ 
@@ -107,24 +141,24 @@ export default function GrowthCalculator({ etf, onData }) {
     });
     
     // Process month by month - stocks compound continuously, so we use monthly compounding
-    const totalMonths = yearsOfGrowth * 12;
+    const totalMonths = years * 12;
     const monthlyRate = rate / 12; // Annual rate divided by 12 for monthly compounding
     const compareMonthlyRate = compareRate !== null ? compareRate / 12 : null;
     
     // Calculate monthly contribution amount based on frequency
     const monthlyContribution = 
-      contributionFrequency === "daily" ? contributionAmount * 30 :
-      contributionFrequency === "weekly" ? contributionAmount * 4 :
-      contributionFrequency === "monthly" ? contributionAmount :
+      contributionFrequency === "daily" ? contribution * 30 :
+      contributionFrequency === "weekly" ? contribution * 4 :
+      contributionFrequency === "monthly" ? contribution :
       0; // annually handled separately
 
     for (let month = 1; month <= totalMonths; month++) {
       // Add contribution first
       if (contributionFrequency === "annually" && month % 12 === 1) {
         // Add annual contribution at start of each year
-        balance += contributionAmount;
-        if (compareBalance !== null) compareBalance += contributionAmount;
-        totalDeposits += contributionAmount;
+        balance += contribution;
+        if (compareBalance !== null) compareBalance += contribution;
+        totalDeposits += contribution;
       } else if (contributionFrequency !== "annually") {
         // Add monthly contribution (calculated from daily/weekly/monthly)
         balance += monthlyContribution;
@@ -151,13 +185,52 @@ export default function GrowthCalculator({ etf, onData }) {
     if (onData) {
       onData(data);
     }
+
+    const last = data[data.length - 1];
+    if (last) {
+      setSummary({
+        finalBalance: last.balance,
+        totalDeposits: last.totalDeposits,
+        profit: last.balance - last.totalDeposits,
+        compareFinal: last.compareBalance,
+        years,
+        compareLabel: compareETF ? compareETF.ticker : null,
+      });
+    }
   };
 
   if (!etf) return null;
 
   return (
     <div className="bg-primary-500/10 backdrop-blur-sm rounded-xl p-6 shadow-md border border-primary-500/20 sticky top-6">
-      <h3 className="text-lg font-semibold mb-6 text-primary-300 drop-shadow-[0_0_6px_rgba(221,214,254,0.4)]">Prediction</h3>
+      <h3 className="text-lg font-semibold mb-4 text-primary-300 drop-shadow-[0_0_6px_rgba(221,214,254,0.4)]">Prediction</h3>
+
+      {summary && (
+        <div className="mb-6 p-5 rounded-xl bg-gradient-to-br from-primary-400/25 to-primary-500/10 border border-primary-400/40 shadow-lg">
+          <p className="text-primary-300 text-sm font-medium mb-1">
+            Projected balance in {summary.years} {summary.years === 1 ? 'year' : 'years'}
+          </p>
+          <p className="text-4xl font-bold text-primary-100 drop-shadow-[0_0_10px_rgba(221,214,254,0.35)]">
+            ${summary.finalBalance.toLocaleString()}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <span className="text-green-400 font-medium">
+              +${summary.profit.toLocaleString()} profit
+            </span>
+            <span className="text-primary-300/80">
+              ${summary.totalDeposits.toLocaleString()} deposited
+            </span>
+          </div>
+          {summary.compareFinal != null && (
+            <p className="text-sm text-primary-300 mt-2 pt-2 border-t border-primary-400/20">
+              {summary.compareLabel}:{' '}
+              <span className="text-primary-200 font-semibold">
+                ${summary.compareFinal.toLocaleString()}
+              </span>
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* Initial Deposit */}
@@ -170,14 +243,14 @@ export default function GrowthCalculator({ etf, onData }) {
               min="0"
               step="100"
               value={initialDeposit}
-              onChange={(e) => setInitialDeposit(Math.max(0, Number(e.target.value) || 0))}
+              {...getNumericHandlers(initialDeposit, setInitialDeposit, { min: 0, emptyDefault: 0 })}
               className="w-full pl-7 pr-10 py-2.5 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
               placeholder="0"
             />
             <div className="number-spinner">
               <button
                 type="button"
-                onClick={() => setInitialDeposit(prev => Math.max(0, prev + 100))}
+                onClick={() => setInitialDeposit(prev => parseNum(prev, 0) + 100)}
                 aria-label="Increase"
               >
                 <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
@@ -186,7 +259,7 @@ export default function GrowthCalculator({ etf, onData }) {
               </button>
               <button
                 type="button"
-                onClick={() => setInitialDeposit(prev => Math.max(0, prev - 100))}
+                onClick={() => setInitialDeposit(prev => Math.max(0, parseNum(prev, 0) - 100))}
                 aria-label="Decrease"
               >
                 <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
@@ -206,17 +279,19 @@ export default function GrowthCalculator({ etf, onData }) {
               min="1"
               max="100"
               value={yearsOfGrowth}
-              onChange={(e) => {
-                const value = Math.max(1, Math.min(100, Number(e.target.value) || 1));
-                setYearsOfGrowth(value);
-              }}
+              {...getNumericHandlers(yearsOfGrowth, setYearsOfGrowth, {
+                min: 1,
+                max: 100,
+                emptyDefault: 1,
+                clampMinWhileTyping: false,
+              })}
               className="w-full px-3 pr-10 py-2.5 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
               placeholder="Enter years"
             />
             <div className="number-spinner">
               <button
                 type="button"
-                onClick={() => setYearsOfGrowth(prev => Math.min(100, prev + 1))}
+                onClick={() => setYearsOfGrowth(prev => Math.min(100, parseNum(prev, 1) + 1))}
                 aria-label="Increase"
               >
                 <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
@@ -225,7 +300,7 @@ export default function GrowthCalculator({ etf, onData }) {
               </button>
               <button
                 type="button"
-                onClick={() => setYearsOfGrowth(prev => Math.max(1, prev - 1))}
+                onClick={() => setYearsOfGrowth(prev => Math.max(1, parseNum(prev, 1) - 1))}
                 aria-label="Decrease"
               >
                 <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
@@ -239,15 +314,42 @@ export default function GrowthCalculator({ etf, onData }) {
         {/* Estimated Rate of Return */}
         <div className="flex flex-col">
           <label className="text-primary-300 text-sm font-medium mb-2">Estimated rate of return</label>
-          <div className="relative">
+          <div className="relative number-input-wrapper">
             <input
-              type="text"
-              value={`${(rateOfReturn * 100).toFixed(1)}%`}
-              readOnly
-              className="w-full px-3 py-2.5 rounded-lg bg-primary-500/15 backdrop-blur-sm border border-primary-500/20 text-primary-200 cursor-not-allowed"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={estimatedRate}
+              {...getNumericHandlers(estimatedRate, setEstimatedRate, { min: 0, max: 100, emptyDefault: 0 })}
+              className="w-full px-3 pr-10 py-2.5 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
+              placeholder="10"
             />
+            <span className="absolute right-10 top-1/2 transform -translate-y-1/2 text-primary-200">%</span>
+            <div className="number-spinner">
+              <button
+                type="button"
+                onClick={() => setEstimatedRate(prev => Math.min(100, Math.round((parseNum(prev, 0) + 0.1) * 10) / 10))}
+                aria-label="Increase"
+              >
+                <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2 7 L5 3 L8 7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEstimatedRate(prev => Math.max(0, Math.round((parseNum(prev, 0) - 0.1) * 10) / 10))}
+                aria-label="Decrease"
+              >
+                <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2 3 L5 7 L8 3" />
+                </svg>
+              </button>
+            </div>
           </div>
-          <p className="text-primary-300/70 text-xs mt-1">Based on {etf.ticker} average annual return</p>
+          <p className="text-primary-300/70 text-xs mt-1">
+            Defaults to {etf.ticker} average ({getDefaultEstimatedRate(etf).toFixed(1)}%) — edit to customize
+          </p>
         </div>
 
         {/* Compare With Input */}
@@ -298,7 +400,7 @@ export default function GrowthCalculator({ etf, onData }) {
           </div>
           
           {/* Show rate when ETF is selected */}
-          {compareETF && !useCustomRate && (
+          {compareETF && (
             <>
               <div className="relative mt-2">
                 <input
@@ -312,59 +414,8 @@ export default function GrowthCalculator({ etf, onData }) {
             </>
           )}
           
-          {compareInput.trim() !== "" && !compareETF && !useCustomRate && (
+          {compareInput.trim() !== "" && !compareETF && (
             <p className="text-primary-300/70 text-xs mt-1">ETF not found. Available: {allETFs.map(e => e.ticker).join(", ")}</p>
-          )}
-        </div>
-
-        {/* Custom Rate Option */}
-        <div className="flex flex-col">
-          <label className="flex items-center gap-2 text-primary-300 text-sm font-medium mb-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={useCustomRate}
-              onChange={(e) => setUseCustomRate(e.target.checked)}
-              className="w-4 h-4 rounded bg-primary-500/10 border-primary-500/20 text-primary-400 focus:ring-primary-400 focus:ring-2"
-            />
-            <span>Or compare with custom rate</span>
-          </label>
-          {useCustomRate && (
-            <>
-              <div className="relative number-input-wrapper">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={customRate}
-                  onChange={(e) => setCustomRate(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
-                  className="w-full px-3 pr-10 py-2.5 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
-                  placeholder="10"
-                />
-                <span className="absolute right-10 top-1/2 transform -translate-y-1/2 text-primary-200">%</span>
-                <div className="number-spinner">
-                  <button
-                    type="button"
-                    onClick={() => setCustomRate(prev => Math.min(100, prev + 0.1))}
-                    aria-label="Increase"
-                  >
-                    <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M2 7 L5 3 L8 7" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomRate(prev => Math.max(0, prev - 0.1))}
-                    aria-label="Decrease"
-                  >
-                    <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M2 3 L5 7 L8 3" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              <p className="text-primary-300/70 text-xs mt-1">Custom rate of return</p>
-            </>
           )}
         </div>
 
@@ -378,14 +429,14 @@ export default function GrowthCalculator({ etf, onData }) {
               min="0"
               step="10"
               value={contributionAmount}
-              onChange={(e) => setContributionAmount(Math.max(0, Number(e.target.value) || 0))}
+              {...getNumericHandlers(contributionAmount, setContributionAmount, { min: 0, emptyDefault: 0 })}
               className="w-full pl-7 pr-10 py-2.5 rounded-lg bg-primary-500/10 backdrop-blur-sm border border-primary-500/20 focus:outline-none focus:border-primary-400/40 text-primary-200"
               placeholder="0"
             />
             <div className="number-spinner">
               <button
                 type="button"
-                onClick={() => setContributionAmount(prev => prev + 10)}
+                onClick={() => setContributionAmount(prev => parseNum(prev, 0) + 10)}
                 aria-label="Increase"
               >
                 <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
@@ -394,7 +445,7 @@ export default function GrowthCalculator({ etf, onData }) {
               </button>
               <button
                 type="button"
-                onClick={() => setContributionAmount(prev => Math.max(0, prev - 10))}
+                onClick={() => setContributionAmount(prev => Math.max(0, parseNum(prev, 0) - 10))}
                 aria-label="Decrease"
               >
                 <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">

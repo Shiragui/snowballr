@@ -38,6 +38,11 @@ A clean, accessible ETF research and growth simulation Frontend UI Demo.
 - Portfolio tracking
 - More detailed financial metrics
 
+
+
+
+
+
 ---
 
 Built for accessible financial education 🎓

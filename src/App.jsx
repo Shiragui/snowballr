@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Home from "./pages/Home";
 import ProjectionChart from "./components/ProjectionChart";
 import GrowthCalculator from "./components/GrowthCalculator";
@@ -19,6 +19,10 @@ export default function App() {
   const [timePeriod, setTimePeriod] = useState("1Y"); // Time period for stock price chart
   const [chartView, setChartView] = useState("line"); // "line", "candlestick", "area"
   const chartResizeRef = useRef(null);
+
+  const handleChartResize = useCallback((fn) => {
+    chartResizeRef.current = fn;
+  }, []);
   
   // Trigger chart resize when panel sizes change
   useEffect(() => {
@@ -28,6 +32,8 @@ export default function App() {
       }, 100);
     }
   }, [chartSize, metricsSize, chartMode]);
+
+  const projectionSummary = growthData.length > 0 ? growthData[growthData.length - 1] : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-primary-900 via-primary-800 to-primary-900">
@@ -48,6 +54,21 @@ export default function App() {
                   stockData={stockPriceData}
                   timePeriod={timePeriod}
                 />
+              )}
+              {chartMode === "projection" && projectionSummary && (
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col">
+                    <div className="text-xs font-medium text-primary-300/80 uppercase tracking-wide">
+                      Projected final balance
+                    </div>
+                    <div className="text-2xl font-bold text-primary-100 drop-shadow-[0_0_8px_rgba(221,214,254,0.4)]">
+                      ${projectionSummary.balance.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="px-3 py-1 rounded-md bg-green-500/20 text-green-400 text-sm font-medium">
+                    +${(projectionSummary.balance - projectionSummary.totalDeposits).toLocaleString()} profit
+                  </div>
+                </div>
               )}
             </div>
             <div className="flex items-center gap-3">
@@ -114,7 +135,7 @@ export default function App() {
         </div>
 
         {/* Main resizable content area */}
-        <div className="flex-1 flex flex-col overflow-hidden px-4 sm:px-6 lg:px-8 py-4 gap-4">
+        <div className="flex-1 flex flex-col overflow-hidden px-4 sm:px-6 lg:px-8 py-4 gap-4 min-h-0">
           <ResizablePanel
             direction="vertical"
             defaultSize={100 - metricsSize}
@@ -134,7 +155,7 @@ export default function App() {
                 >
                   {/* Chart Section */}
                   <div className="h-full w-full bg-primary-500/10 backdrop-blur-sm p-6 rounded-lg shadow-lg border border-primary-500/20 flex flex-col" style={{ minWidth: 0, minHeight: 0, position: 'relative' }}>
-                    <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} chartView={chartView} onResize={(fn) => { chartResizeRef.current = fn; }} onDataChange={setStockPriceData} />
+                    <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} chartView={chartView} onResize={handleChartResize} onDataChange={setStockPriceData} />
                   </div>
                   {/* Calculator Section */}
                   <div className="h-full w-full overflow-y-auto bg-primary-500/10 backdrop-blur-sm rounded-lg border border-primary-500/20" style={{ minWidth: 0 }}>
@@ -144,7 +165,7 @@ export default function App() {
               ) : (
                 /* Chart only in price mode */
                 <div className="h-full w-full bg-primary-500/10 backdrop-blur-sm p-6 rounded-lg shadow-lg border border-primary-500/20 flex flex-col" style={{ minWidth: 0, minHeight: 0, position: 'relative' }}>
-                  <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} chartView={chartView} onResize={(fn) => { chartResizeRef.current = fn; }} onDataChange={setStockPriceData} />
+                  <ProjectionChart data={growthData} mode={chartMode} etf={selectedETF} timePeriod={timePeriod} chartView={chartView} onResize={handleChartResize} onDataChange={setStockPriceData} />
                 </div>
               )}
             </div>

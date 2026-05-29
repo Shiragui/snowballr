@@ -4,14 +4,20 @@ import { fetchStockData, fetchLatestPrice } from '../services/stockData';
 
 export default function ProjectionChart({ data = [], mode = "projection", etf, timePeriod = "1Y", chartView = "line", onResize, onDataChange }) {
   const chartContainerRef = useRef(null);
+  const chartMountRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const depositsSeriesRef = useRef(null);
   const customSeriesRef = useRef(null);
   const tooltipRef = useRef(null);
+  const streamingIntervalRef = useRef(null);
+  const prevModeRef = useRef(mode);
+  const prevChartViewRef = useRef(chartView);
+  const crosshairUnsubRef = useRef(null);
+  const projectionRangeUnsubRef = useRef(null);
+  const projectionStartTimeRef = useRef(null);
   const [stockData, setStockData] = useState([]);
   const [loading, setLoading] = useState(false);
-  const streamingIntervalRef = useRef(null);
 
   // Fetch real stock data when in price mode
   useEffect(() => {
@@ -37,59 +43,40 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
     }
   }, [mode, etf?.ticker, timePeriod, onDataChange]);
 
-  // Real-time streaming updates (polling every 10 seconds for intraday)
+  // Real-time streaming updates (polling for intraday)
   useEffect(() => {
-    if (mode === "price" && etf?.ticker && seriesRef.current) {
-      // Clear any existing interval
+    if (streamingIntervalRef.current) {
+      clearInterval(streamingIntervalRef.current);
+      streamingIntervalRef.current = null;
+    }
+
+    if (mode !== "price" || !etf?.ticker || timePeriod !== '1D') {
+      return;
+    }
+
+    const updatePrice = async () => {
+      if (!seriesRef.current) return;
+
+      try {
+        const latest = await fetchLatestPrice(etf.ticker);
+        if (latest?.value != null && !isNaN(latest.value)) {
+          seriesRef.current.update(latest);
+        }
+      } catch (error) {
+        console.error('Error fetching latest price:', error);
+      }
+    };
+
+    updatePrice();
+    streamingIntervalRef.current = setInterval(updatePrice, 60000);
+
+    return () => {
       if (streamingIntervalRef.current) {
         clearInterval(streamingIntervalRef.current);
+        streamingIntervalRef.current = null;
       }
-
-      // Only stream for 1D period (intraday data)
-      if (timePeriod === '1D') {
-        const updatePrice = async () => {
-          try {
-            const latest = await fetchLatestPrice(etf.ticker);
-            if (latest && seriesRef.current && latest.value && !isNaN(latest.value)) {
-              // Update chart with latest price
-              try {
-                seriesRef.current.update(latest);
-                // Also update stockData state to keep it in sync
-                setStockData(prev => {
-                  const newData = [...prev];
-                  if (newData.length > 0) {
-                    // Update last point or add new one
-                    const lastPoint = newData[newData.length - 1];
-                    if (lastPoint.time === latest.time) {
-                      newData[newData.length - 1] = latest;
-                    } else {
-                      newData.push(latest);
-                    }
-                  }
-                  return newData;
-                });
-              } catch (error) {
-                // If update fails, might need to add new point
-                console.log('Update failed, may need to add new point:', error);
-              }
-            }
-          } catch (error) {
-            console.error('Error fetching latest price:', error);
-          }
-        };
-
-        // Update immediately and then every 10 seconds
-        updatePrice();
-        streamingIntervalRef.current = setInterval(updatePrice, 10000);
-      }
-
-      return () => {
-        if (streamingIntervalRef.current) {
-          clearInterval(streamingIntervalRef.current);
-        }
-      };
-    }
-  }, [mode, etf?.ticker, timePeriod, seriesRef.current]);
+    };
+  }, [mode, etf?.ticker, timePeriod, stockData.length]);
 
   // Handle chart resize - separate effect that runs after chart is created
   useEffect(() => {
@@ -100,14 +87,14 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         const width = chartContainerRef.current.clientWidth;
         const height = chartContainerRef.current.clientHeight;
         if (width > 0 && height > 0) {
-          // Use resize method if available, otherwise use applyOptions
-          if (typeof chartRef.current.resize === 'function') {
-            chartRef.current.resize(width, height);
-          } else {
-            chartRef.current.applyOptions({
-              width: width,
-              height: height,
-            });
+          try {
+            if (typeof chartRef.current.resize === 'function') {
+              chartRef.current.resize(width, height);
+            } else {
+              chartRef.current.applyOptions({ width, height });
+            }
+          } catch (error) {
+            console.error('Chart resize failed:', error);
           }
         }
       }
@@ -169,98 +156,119 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
   }, [data.length]); // Trigger when data changes
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    if (!chartContainerRef.current || !chartMountRef.current) return;
 
-    // Clean up existing series (but keep chart if it exists and we're just switching views)
-    if (seriesRef.current && chartRef.current && mode === "price") {
-      try {
-        chartRef.current.removeSeries(seriesRef.current);
-      } catch (e) {
-        // Series might already be removed
+    const modeChanged = prevModeRef.current !== mode;
+    const chartViewChanged = prevChartViewRef.current !== chartView;
+    prevModeRef.current = mode;
+    prevChartViewRef.current = chartView;
+
+    const removeSeries = (seriesRefToRemove) => {
+      if (seriesRefToRemove.current && chartRef.current) {
+        try {
+          chartRef.current.removeSeries(seriesRefToRemove.current);
+        } catch (e) {
+          // Series might already be removed
+        }
+        seriesRefToRemove.current = null;
       }
-      seriesRef.current = null;
-    }
-    
-    // Clean up all series for projection mode or if chart doesn't exist
-    if (depositsSeriesRef.current && chartRef.current) {
-      try {
-        chartRef.current.removeSeries(depositsSeriesRef.current);
-      } catch (e) {}
-      depositsSeriesRef.current = null;
-    }
-    if (customSeriesRef.current && chartRef.current) {
-      try {
-        chartRef.current.removeSeries(customSeriesRef.current);
-      } catch (e) {}
-      customSeriesRef.current = null;
-    }
-    
-    // Only remove entire chart if mode changed or chart doesn't exist
-    if (!chartRef.current || (mode === "projection" && chartRef.current)) {
-      if (chartRef.current) {
+    };
+
+    try {
+      if (chartRef.current && modeChanged) {
+        if (typeof crosshairUnsubRef.current === 'function') {
+          crosshairUnsubRef.current();
+          crosshairUnsubRef.current = null;
+        }
         chartRef.current.remove();
+        chartRef.current = null;
+        seriesRef.current = null;
+        depositsSeriesRef.current = null;
+        customSeriesRef.current = null;
       }
-      chartRef.current = null;
-    }
-    
-    // Create tooltip element
-    if (!tooltipRef.current && chartContainerRef.current) {
-      const tooltip = document.createElement('div');
-      tooltip.className = 'absolute pointer-events-none z-20 bg-primary-500/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-primary-400/50 shadow-lg';
-      tooltip.style.display = 'none';
-      tooltip.style.fontSize = '12px';
-      tooltip.style.color = '#ddd6fe';
-      chartContainerRef.current.appendChild(tooltip);
-      tooltipRef.current = tooltip;
-    }
 
-    // Create chart if it doesn't exist
-    let chart = chartRef.current;
-    if (!chart && chartContainerRef.current) {
-      chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth,
-        height: chartContainerRef.current.clientHeight,
-        layout: {
-          background: { color: 'rgba(139, 92, 246, 0.1)' },
-          textColor: '#ddd6fe',
-        },
-        grid: {
-          vertLines: { color: 'rgba(139, 92, 246, 0.2)' },
-          horzLines: { color: 'rgba(139, 92, 246, 0.2)' },
-        },
-        crosshair: {
-          mode: 1, // Normal crosshair mode
-          vertLine: {
-            color: 'rgba(196, 181, 253, 0.5)',
-            width: 1,
-            style: 2, // Dashed line
-          },
-          horzLine: {
-            color: 'rgba(196, 181, 253, 0.5)',
-            width: 1,
-            style: 2, // Dashed line
-          },
-        },
-        timeScale: {
-          borderColor: 'rgba(139, 92, 246, 0.3)',
-          timeVisible: true,
-        },
-        rightPriceScale: {
-          borderColor: 'rgba(139, 92, 246, 0.3)',
-        },
-        watermark: {
-          visible: false,
-        },
-      });
-      chartRef.current = chart;
-    }
-    
-    if (!chart) return;
+      if (mode === "projection") {
+        if (typeof crosshairUnsubRef.current === 'function') {
+          crosshairUnsubRef.current();
+          crosshairUnsubRef.current = null;
+        }
+        removeSeries(seriesRef);
+        removeSeries(depositsSeriesRef);
+        removeSeries(customSeriesRef);
+      } else if (chartViewChanged) {
+        removeSeries(seriesRef);
+      }
 
-    // Set up initial data
-    let chartData = [];
-    
-    if (mode === "projection") {
+      if (!tooltipRef.current && chartContainerRef.current) {
+        const tooltip = document.createElement('div');
+        tooltip.className = 'absolute pointer-events-none z-20 bg-primary-500/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-primary-400/50 shadow-lg';
+        tooltip.style.display = 'none';
+        tooltip.style.fontSize = '12px';
+        tooltip.style.color = '#ddd6fe';
+        chartContainerRef.current.appendChild(tooltip);
+        tooltipRef.current = tooltip;
+      }
+
+      let chart = chartRef.current;
+      if (!chart && chartMountRef.current) {
+        const width = chartContainerRef.current.clientWidth;
+        const height = chartContainerRef.current.clientHeight;
+        chart = createChart(chartMountRef.current, {
+          width: width > 0 ? width : 400,
+          height: height > 0 ? height : 400,
+          layout: {
+            background: { color: 'rgba(139, 92, 246, 0.1)' },
+            textColor: '#ddd6fe',
+          },
+          grid: {
+            vertLines: { color: 'rgba(139, 92, 246, 0.2)' },
+            horzLines: { color: 'rgba(139, 92, 246, 0.2)' },
+          },
+          crosshair: {
+            mode: 1,
+            vertLine: { color: 'rgba(196, 181, 253, 0.5)', width: 1, style: 2 },
+            horzLine: { color: 'rgba(196, 181, 253, 0.5)', width: 1, style: 2 },
+          },
+          timeScale: {
+            borderColor: 'rgba(139, 92, 246, 0.3)',
+            timeVisible: true,
+          },
+          rightPriceScale: {
+            borderColor: 'rgba(139, 92, 246, 0.3)',
+          },
+          watermark: {
+            visible: false,
+          },
+        });
+        chartRef.current = chart;
+      }
+
+      if (!chart) return;
+
+      let chartData = [];
+
+      if (mode === "price" && seriesRef.current && stockData.length > 0 && !chartViewChanged && !modeChanged) {
+        const isIntraday = typeof stockData[0].time === 'number';
+        const lineData = stockData
+          .filter(item => item.value != null && !isNaN(item.value))
+          .map(item => ({ time: item.time, value: item.value }));
+
+        if (lineData.length > 0 && chartView !== 'candlestick') {
+          try {
+            seriesRef.current.setData(lineData);
+            chart.timeScale().fitContent();
+            if (isIntraday) {
+              chart.timeScale().applyOptions({ timeVisible: true, secondsVisible: false });
+            }
+            return;
+          } catch (error) {
+            console.error('Chart setData failed, recreating series:', error);
+            removeSeries(seriesRef);
+          }
+        }
+      }
+
+      if (mode === "projection") {
       // Growth projection data
       let depositsData = [];
       let compareData = [];
@@ -362,9 +370,10 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
       
       areaSeries.setData(chartData);
       seriesRef.current = areaSeries;
+      projectionStartTimeRef.current = chartData[0]?.time ?? null;
       
       // Add crosshair move handler for tooltip
-      chart.subscribeCrosshairMove(param => {
+      crosshairUnsubRef.current = chart.subscribeCrosshairMove(param => {
         if (!tooltipRef.current) return;
         
         if (param.point === undefined || !param.time || param.point.x < 0 || param.point.x > chartContainerRef.current.clientWidth || param.point.y < 0 || param.point.y > chartContainerRef.current.clientHeight) {
@@ -453,6 +462,7 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         }
       });
     } else {
+      projectionStartTimeRef.current = null;
       // Stock price data - use real data from API
       chartData = stockData;
       
@@ -563,19 +573,71 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
       }
     }
 
-    if (chartData.length > 0) {
-      chart.timeScale().fitContent();
+      if (chartData.length > 0) {
+        try {
+          if (mode === "projection") {
+            chart.timeScale().applyOptions({
+              fixLeftEdge: true,
+              fixRightEdge: false,
+            });
+          } else {
+            chart.timeScale().applyOptions({
+              fixLeftEdge: false,
+              fixRightEdge: false,
+            });
+          }
+          chart.timeScale().fitContent();
+
+          if (typeof projectionRangeUnsubRef.current === 'function') {
+            projectionRangeUnsubRef.current();
+            projectionRangeUnsubRef.current = null;
+          }
+
+          if (mode === "projection" && projectionStartTimeRef.current) {
+            const startTime = projectionStartTimeRef.current;
+            projectionRangeUnsubRef.current = chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+              if (!range || range.from >= startTime) return;
+              try {
+                chart.timeScale().setVisibleRange({
+                  from: startTime,
+                  to: range.to > startTime ? range.to : startTime,
+                });
+              } catch (error) {
+                console.error('Chart visible range clamp failed:', error);
+              }
+            });
+          }
+        } catch (error) {
+          console.error('Chart fitContent failed:', error);
+        }
+      }
+    } catch (error) {
+      console.error('Chart effect error:', error);
     }
 
     return () => {
-      // Don't remove chart on every render, only on unmount
-      // Series cleanup is handled above
+      if (typeof crosshairUnsubRef.current === 'function') {
+        crosshairUnsubRef.current();
+        crosshairUnsubRef.current = null;
+      }
+      if (typeof projectionRangeUnsubRef.current === 'function') {
+        projectionRangeUnsubRef.current();
+        projectionRangeUnsubRef.current = null;
+      }
     };
   }, [mode, data, etf, stockData, chartView]);
   
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (typeof crosshairUnsubRef.current === 'function') {
+        crosshairUnsubRef.current();
+        crosshairUnsubRef.current = null;
+      }
+      if (typeof projectionRangeUnsubRef.current === 'function') {
+        projectionRangeUnsubRef.current();
+        projectionRangeUnsubRef.current = null;
+      }
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
@@ -603,6 +665,11 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         flexDirection: 'column'
       }} 
       className="chart-container rounded-lg overflow-hidden"
-    />
+    >
+      <div
+        ref={chartMountRef}
+        style={{ width: '100%', height: '100%', flex: '1 1 auto', minHeight: '400px' }}
+      />
+    </div>
   );
 }

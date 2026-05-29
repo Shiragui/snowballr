@@ -402,7 +402,7 @@ function getFallbackQuote(symbol) {
     symbol,
     price: price + (Math.random() - 0.5) * 5,
     change: (Math.random() - 0.5) * 2,
-    changePercent: ((Math.random() - 0.5) * 2).toFixed(2),
+    changePercent: (Math.random() - 0.5) * 2,
     volume: 1000000,
     high: price * 1.02,
     low: price * 0.98,

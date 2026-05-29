@@ -1,28 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { fetchStockQuote } from '../services/stockData';
 
 export default function StockQuote({ symbol, stockData, timePeriod }) {
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
+  const isInitialLoad = useRef(true);
 
   useEffect(() => {
     if (!symbol) return;
 
+    isInitialLoad.current = true;
+
     const loadQuote = async () => {
-      setLoading(true);
+      if (isInitialLoad.current) {
+        setLoading(true);
+      }
       try {
         const data = await fetchStockQuote(symbol);
-        setQuote(data);
+        if (data) setQuote(data);
       } catch (error) {
         console.error('Error loading quote:', error);
       } finally {
-        setLoading(false);
+        if (isInitialLoad.current) {
+          setLoading(false);
+          isInitialLoad.current = false;
+        }
       }
     };
 
     loadQuote();
-    // Update every 10 seconds
-    const interval = setInterval(loadQuote, 10000);
+    const interval = setInterval(loadQuote, 60000);
 
     return () => clearInterval(interval);
   }, [symbol]);
@@ -62,15 +69,17 @@ export default function StockQuote({ symbol, stockData, timePeriod }) {
     );
   }
 
-  const price = quote.price || 0;
+  const price = Number(quote.price) || 0;
   const { change, changePercent } = calculatePeriodChange();
+  const changeNum = Number(change) || 0;
+  const changePercentNum = Number(changePercent) || 0;
 
-  const isPositive = change >= 0;
+  const isPositive = changeNum >= 0;
   const changeColor = isPositive ? 'text-green-400' : 'text-red-400';
   const bgColor = isPositive ? 'bg-green-500/20' : 'bg-red-500/20';
 
   // Safety check for valid numbers
-  if (isNaN(price) || isNaN(change) || isNaN(changePercent)) {
+  if (isNaN(price) || isNaN(changeNum) || isNaN(changePercentNum)) {
     return (
       <div className="flex items-center gap-4 text-primary-300">
         <div className="text-sm">Price data unavailable</div>
@@ -85,11 +94,11 @@ export default function StockQuote({ symbol, stockData, timePeriod }) {
           ${price.toFixed(2)}
         </div>
         <div className={`text-sm font-medium ${changeColor}`}>
-          {isPositive ? '+' : ''}{change.toFixed(2)} ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
+          {isPositive ? '+' : ''}{changeNum.toFixed(2)} ({isPositive ? '+' : ''}{changePercentNum.toFixed(2)}%)
         </div>
       </div>
       <div className={`px-3 py-1 rounded-md ${bgColor} ${changeColor} text-sm font-medium`}>
-        {isPositive ? '↑' : '↓'} {Math.abs(changePercent).toFixed(2)}%
+        {isPositive ? '↑' : '↓'} {Math.abs(changePercentNum).toFixed(2)}%
       </div>
     </div>
   );
