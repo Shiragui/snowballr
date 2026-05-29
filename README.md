@@ -18,7 +18,39 @@ A clean, accessible ETF research and growth simulation Frontend UI Demo.
 - **Vite** - Build tool
 - **Tailwind CSS** - Styling
 - **lightweight-charts** - Chart visualizations
-- **Alpha Vantage API** - Real stock market data
+- **Yahoo Finance** (via proxy) - Stock market data
+- **Express API** - Google login, saved projections, Schwab OAuth
+
+## Local development
+
+```bash
+npm install
+cp .env.example .env   # fill in credentials (see below)
+npm run dev:all        # frontend :5173 + API :3001
+```
+
+Or run separately: `npm run dev:api` and `npm run dev`.
+
+## Sign in & saved projections
+
+1. Create [Google OAuth credentials](https://console.cloud.google.com/apis/credentials) (Web application).
+2. Set **Authorized redirect URI** to `http://localhost:3001/api/auth/google/callback`.
+3. Add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `JWT_SECRET` to `.env`.
+4. Open the app → **Sign in** → **Continue with Google**.
+5. In Projection mode, use your account menu → **Save current projection**. Load saved projections from the same menu.
+
+## Connect Charles Schwab (optional)
+
+Schwab requires a separate [developer account](https://developer.schwab.com) and app approval (often 1–3 days).
+
+1. Create an app at [developer.schwab.com/dashboard/apps](https://developer.schwab.com/dashboard/apps).
+2. Enable **Accounts and Trading Production** (and optionally Market Data).
+3. Set callback URL to `http://localhost:3001/api/schwab/callback` (must match exactly).
+4. Add `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET`, and `SCHWAB_REDIRECT_URI` to `.env`.
+5. Sign in to SnowballR → account menu → **Connect Schwab account**.
+6. After linking, your Schwab holdings appear at the bottom of the dashboard; click a symbol to load it.
+
+**Note:** Schwab refresh tokens expire after 7 days — users must reconnect periodically. OAuth secrets must stay on the server (never in the frontend).
 
 ## Usage
 
@@ -33,9 +65,9 @@ A clean, accessible ETF research and growth simulation Frontend UI Demo.
 
 ## Future Improvements
 
-- Real-time streaming data via WebSocket
+- Deploy API backend for production auth (Netlify frontend + hosted API)
+- Schwab token refresh UX before 7-day expiry
 - Compare multiple ETFs side-by-side
-- Portfolio tracking
 - More detailed financial metrics
 
 

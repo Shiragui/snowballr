@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
-import { fetchStockData, fetchLatestPrice } from '../services/stockData';
+import { fetchStockData, fetchLiveTick, invalidateSymbolCache } from '../services/stockData';
 
-export default function ProjectionChart({ data = [], mode = "projection", etf, timePeriod = "1Y", chartView = "line", onResize, onDataChange }) {
+export default function ProjectionChart({ data = [], mode = "projection", etf, timePeriod = "1Y", chartView = "line", onResize, onDataChange, onLivePrice }) {
   const chartContainerRef = useRef(null);
   const chartMountRef = useRef(null);
   const chartRef = useRef(null);
@@ -16,8 +16,111 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
   const crosshairUnsubRef = useRef(null);
   const projectionRangeUnsubRef = useRef(null);
   const projectionStartTimeRef = useRef(null);
+  const lastBarRef = useRef(null);
+  const isCandlestickRef = useRef(false);
+  const liveParamsRef = useRef({ ticker: null, period: '1Y' });
+  const lastChartRefreshRef = useRef(0);
   const [stockData, setStockData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [lastLiveAt, setLastLiveAt] = useState(null);
+
+  const stopLiveStream = () => {
+    if (streamingIntervalRef.current) {
+      clearInterval(streamingIntervalRef.current);
+      streamingIntervalRef.current = null;
+    }
+  };
+
+  const syncLastBarRef = (lastPoint, isCandle) => {
+    if (!lastPoint) {
+      lastBarRef.current = null;
+      return;
+    }
+    const isIntraday = typeof lastPoint.time === 'number';
+    const liveTime = isIntraday
+      ? lastPoint.time
+      : new Date().toISOString().split('T')[0];
+    if (isCandle) {
+      lastBarRef.current = {
+        time: liveTime,
+        open: lastPoint.open ?? lastPoint.value,
+        high: lastPoint.high ?? lastPoint.value,
+        low: lastPoint.low ?? lastPoint.value,
+        value: lastPoint.value ?? lastPoint.close,
+        close: lastPoint.value ?? lastPoint.close,
+      };
+    } else {
+      lastBarRef.current = {
+        time: liveTime,
+        value: lastPoint.value ?? lastPoint.close,
+      };
+    }
+  };
+
+  const startLiveStream = () => {
+    stopLiveStream();
+    const { ticker, period } = liveParamsRef.current;
+    if (!ticker) return;
+
+    const updateLiveBar = async () => {
+      if (!seriesRef.current || !lastBarRef.current) return;
+
+      try {
+        const { ticker, period } = liveParamsRef.current;
+
+        // Refresh full 1D chart periodically so new extended-hours bars appear
+        if (period === '1D' && Date.now() - lastChartRefreshRef.current > 15_000) {
+          lastChartRefreshRef.current = Date.now();
+          invalidateSymbolCache(ticker);
+          const fresh = await fetchStockData(ticker, '1D');
+          if (fresh?.length && seriesRef.current && !isCandlestickRef.current) {
+            const lineData = fresh
+              .filter((item) => item.value != null && !isNaN(item.value))
+              .map((item) => ({ time: item.time, value: item.value }));
+            if (lineData.length) {
+              seriesRef.current.setData(lineData);
+              syncLastBarRef(lineData[lineData.length - 1], false);
+              if (onDataChange) onDataChange(fresh);
+            }
+          }
+        }
+
+        const tick = await fetchLiveTick(ticker, period);
+        if (!tick?.value || isNaN(tick.value)) return;
+
+        const { time, value: price } = tick;
+        const last = lastBarRef.current;
+        const sameBar = last.time === time;
+
+        if (isCandlestickRef.current) {
+          const open = sameBar ? (last.open ?? price) : price;
+          const high = sameBar ? Math.max(last.high ?? price, price) : price;
+          const low = sameBar ? Math.min(last.low ?? price, price) : price;
+          seriesRef.current.update({ time, open, high, low, close: price });
+          lastBarRef.current = { time, open, high, low, value: price, close: price };
+        } else {
+          seriesRef.current.update({ time, value: price });
+          lastBarRef.current = { time, value: price };
+        }
+
+        if (onLivePrice) onLivePrice(price);
+
+        if (chartRef.current) {
+          try {
+            chartRef.current.timeScale().scrollToRealTime();
+          } catch {
+            // scrollToRealTime not available in all chart configs
+          }
+        }
+        setLastLiveAt(new Date());
+      } catch (error) {
+        console.error('Error updating live bar:', error);
+      }
+    };
+
+    void updateLiveBar();
+    streamingIntervalRef.current = setInterval(updateLiveBar, 3_000);
+  };
 
   // Fetch real stock data when in price mode
   useEffect(() => {
@@ -42,41 +145,6 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
       }
     }
   }, [mode, etf?.ticker, timePeriod, onDataChange]);
-
-  // Real-time streaming updates (polling for intraday)
-  useEffect(() => {
-    if (streamingIntervalRef.current) {
-      clearInterval(streamingIntervalRef.current);
-      streamingIntervalRef.current = null;
-    }
-
-    if (mode !== "price" || !etf?.ticker || timePeriod !== '1D') {
-      return;
-    }
-
-    const updatePrice = async () => {
-      if (!seriesRef.current) return;
-
-      try {
-        const latest = await fetchLatestPrice(etf.ticker);
-        if (latest?.value != null && !isNaN(latest.value)) {
-          seriesRef.current.update(latest);
-        }
-      } catch (error) {
-        console.error('Error fetching latest price:', error);
-      }
-    };
-
-    updatePrice();
-    streamingIntervalRef.current = setInterval(updatePrice, 60000);
-
-    return () => {
-      if (streamingIntervalRef.current) {
-        clearInterval(streamingIntervalRef.current);
-        streamingIntervalRef.current = null;
-      }
-    };
-  }, [mode, etf?.ticker, timePeriod, stockData.length]);
 
   // Handle chart resize - separate effect that runs after chart is created
   useEffect(() => {
@@ -157,6 +225,15 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
 
   useEffect(() => {
     if (!chartContainerRef.current || !chartMountRef.current) return;
+
+    liveParamsRef.current = {
+      ticker: mode === 'price' ? etf?.ticker : null,
+      period: timePeriod,
+    };
+
+    if (mode !== 'price') {
+      stopLiveStream();
+    }
 
     const modeChanged = prevModeRef.current !== mode;
     const chartViewChanged = prevChartViewRef.current !== chartView;
@@ -256,6 +333,8 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         if (lineData.length > 0 && chartView !== 'candlestick') {
           try {
             seriesRef.current.setData(lineData);
+            syncLastBarRef(lineData[lineData.length - 1], false);
+            startLiveStream();
             chart.timeScale().fitContent();
             if (isIntraday) {
               chart.timeScale().applyOptions({ timeVisible: true, secondsVisible: false });
@@ -496,7 +575,7 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         );
         
         if (chartView === 'candlestick' && hasOHLC) {
-          // Candlestick chart
+          isCandlestickRef.current = true;
           series = chart.addCandlestickSeries({
             upColor: '#10b981',
             downColor: '#ef4444',
@@ -526,7 +605,7 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
           if (candlestickData.length > 0) {
             series.setData(candlestickData);
           } else {
-            // Fallback to line if no valid candlestick data
+            isCandlestickRef.current = false;
             series = chart.addLineSeries({
               color: '#8b5cf6',
               lineWidth: 2,
@@ -538,17 +617,8 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
             });
             series.setData(chartData.map(item => ({ time: item.time, value: item.value })));
           }
-        } else if (chartView === 'area') {
-          // Area chart
-          series = chart.addAreaSeries({
-            lineColor: '#8b5cf6',
-            topColor: 'rgba(139, 92, 246, 0.3)',
-            bottomColor: 'rgba(139, 92, 246, 0.1)',
-            lineWidth: 2,
-          });
-          series.setData(chartData.map(item => ({ time: item.time, value: item.value })));
         } else {
-          // Line chart (default)
+          isCandlestickRef.current = false;
           series = chart.addLineSeries({
             color: '#8b5cf6',
             lineWidth: 2,
@@ -560,6 +630,10 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
           });
           series.setData(chartData.map(item => ({ time: item.time, value: item.value })));
         }
+        
+        const lastPoint = chartData[chartData.length - 1];
+        syncLastBarRef(lastPoint, isCandlestickRef.current);
+        startLiveStream();
         
         // Configure time scale based on data type
         if (isIntraday) {
@@ -616,6 +690,7 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
     }
 
     return () => {
+      stopLiveStream();
       if (typeof crosshairUnsubRef.current === 'function') {
         crosshairUnsubRef.current();
         crosshairUnsubRef.current = null;
@@ -625,11 +700,12 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
         projectionRangeUnsubRef.current = null;
       }
     };
-  }, [mode, data, etf, stockData, chartView]);
+  }, [mode, data, etf, stockData, chartView, timePeriod]);
   
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopLiveStream();
       if (typeof crosshairUnsubRef.current === 'function') {
         crosshairUnsubRef.current();
         crosshairUnsubRef.current = null;
@@ -666,6 +742,17 @@ export default function ProjectionChart({ data = [], mode = "projection", etf, t
       }} 
       className="chart-container rounded-lg overflow-hidden"
     >
+      {mode === 'price' && (
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary-900/80 border border-green-500/30 text-xs text-green-400 pointer-events-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          Live
+          {lastLiveAt && (
+            <span className="text-green-400/70 tabular-nums">
+              · {lastLiveAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
+        </div>
+      )}
       <div
         ref={chartMountRef}
         style={{ width: '100%', height: '100%', flex: '1 1 auto', minHeight: '400px' }}

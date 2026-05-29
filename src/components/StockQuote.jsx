@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchStockQuote } from '../services/stockData';
+import { fetchLiveQuote, fetchStockQuote } from '../services/stockData';
 
-export default function StockQuote({ symbol, stockData, timePeriod }) {
+export default function StockQuote({ symbol, stockData, timePeriod, livePrice }) {
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
   const isInitialLoad = useRef(true);
@@ -11,12 +11,14 @@ export default function StockQuote({ symbol, stockData, timePeriod }) {
 
     isInitialLoad.current = true;
 
-    const loadQuote = async () => {
+    const loadQuote = async (live = false) => {
       if (isInitialLoad.current) {
         setLoading(true);
       }
       try {
-        const data = await fetchStockQuote(symbol);
+        const data = live
+          ? (await fetchLiveQuote(symbol)) ?? (await fetchStockQuote(symbol))
+          : await fetchStockQuote(symbol);
         if (data) setQuote(data);
       } catch (error) {
         console.error('Error loading quote:', error);
@@ -28,11 +30,19 @@ export default function StockQuote({ symbol, stockData, timePeriod }) {
       }
     };
 
-    loadQuote();
-    const interval = setInterval(loadQuote, 60000);
+    loadQuote(false);
+    const interval = setInterval(() => loadQuote(true), 3_000);
 
     return () => clearInterval(interval);
   }, [symbol]);
+
+  useEffect(() => {
+    if (livePrice == null) return;
+    setQuote((prev) => {
+      if (!prev || prev.price === livePrice) return prev;
+      return { ...prev, price: livePrice };
+    });
+  }, [livePrice]);
 
   // Calculate period change from stock data
   const calculatePeriodChange = () => {
@@ -69,7 +79,7 @@ export default function StockQuote({ symbol, stockData, timePeriod }) {
     );
   }
 
-  const price = Number(quote.price) || 0;
+  const price = livePrice ?? (Number(quote.price) || 0);
   const { change, changePercent } = calculatePeriodChange();
   const changeNum = Number(change) || 0;
   const changePercentNum = Number(changePercent) || 0;
@@ -97,8 +107,15 @@ export default function StockQuote({ symbol, stockData, timePeriod }) {
           {isPositive ? '+' : ''}{changeNum.toFixed(2)} ({isPositive ? '+' : ''}{changePercentNum.toFixed(2)}%)
         </div>
       </div>
-      <div className={`px-3 py-1 rounded-md ${bgColor} ${changeColor} text-sm font-medium`}>
-        {isPositive ? '↑' : '↓'} {Math.abs(changePercentNum).toFixed(2)}%
+      <div className="flex items-center gap-2">
+        {quote.marketState === 'POST' && (
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+            After Hours
+          </span>
+        )}
+        <div className={`px-3 py-1 rounded-md ${bgColor} ${changeColor} text-sm font-medium`}>
+          {isPositive ? '↑' : '↓'} {Math.abs(changePercentNum).toFixed(2)}%
+        </div>
       </div>
     </div>
   );

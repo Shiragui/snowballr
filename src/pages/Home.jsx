@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { etfs } from "../data/etfs";
 import SearchBar from "../components/SearchBar";
-import { searchStocks } from "../services/stockData";
+import { searchStocks, tickerFromQuery } from "../services/stockData";
 
 export default function Home({ onSelectETF, selectedETF }) {
   const [search, setSearch] = useState("");
@@ -27,7 +27,9 @@ export default function Home({ onSelectETF, selectedETF }) {
       setResults(combinedResults);
     } catch (error) {
       console.error("Error searching stocks:", error);
-      setResults(etfs.filter(e => e.ticker.toUpperCase().includes(query.toUpperCase()))); // Fallback to local
+      const local = etfs.filter(e => e.ticker.toUpperCase().includes(query.toUpperCase()));
+      const direct = tickerFromQuery(query);
+      setResults(local.length > 0 ? local : direct ? [direct] : []);
     } finally {
       setLoading(false);
     }
@@ -89,8 +91,10 @@ export default function Home({ onSelectETF, selectedETF }) {
       if (activeSuggestionIndex !== -1 && results[activeSuggestionIndex]) {
         handleSelect(results[activeSuggestionIndex]);
       } else if (results.length > 0) {
-        // If no suggestion is active, select the first one
         handleSelect(results[0]);
+      } else {
+        const direct = tickerFromQuery(search);
+        if (direct) handleSelect(direct);
       }
     }
   };

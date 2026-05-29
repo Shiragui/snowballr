@@ -57,7 +57,7 @@ export default function ETFMetrics({ etf, stockPriceData }) {
     };
 
     loadTodayQuote();
-    const interval = setInterval(loadTodayQuote, 60000);
+    const interval = setInterval(loadTodayQuote, 20_000);
 
     return () => clearInterval(interval);
   }, [etf?.ticker]);

@@ -1,13 +1,11 @@
-// Stock data service using Yahoo Finance public API (no API key required)
-// This is a free public endpoint similar to what Schwab/Robinhood use
+// Stock data service — prefers local API proxy (fast), falls back to CORS proxy
 
-// Cache for API responses to avoid rate limiting
 const cache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const inflight = new Map();
+const CACHE_DURATION = 5 * 60 * 1000;
+const QUOTE_CACHE_MS = 15 * 1000;
+const CHART_CACHE_1D_MS = 10 * 1000;
 
-/**
- * Get interval and range for time period
- */
 function getIntervalForPeriod(period) {
   const intervals = {
     '1D': { interval: '5m', range: '1d', days: 1 },
@@ -17,355 +15,243 @@ function getIntervalForPeriod(period) {
     '6M': { interval: '1d', range: '6mo', days: 180 },
     '1Y': { interval: '1d', range: '1y', days: 365 },
     '5Y': { interval: '1wk', range: '5y', days: 1825 },
-    'All': { interval: '1mo', range: 'max', days: 10000 }
+    'All': { interval: '1mo', range: 'max', days: 10000 },
   };
   return intervals[period] || intervals['1Y'];
 }
 
-/**
- * Fetch stock data from Yahoo Finance (free, no API key needed)
- * @param {string} symbol - Stock ticker symbol
- * @param {string} period - Time period: '1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'All'
- * @returns {Promise<Array>} Array of { time, value } objects
- */
-export async function fetchStockData(symbol, period = '1Y') {
-  const { interval, range } = getIntervalForPeriod(period);
-  const cacheKey = `${symbol}-${period}`;
-  const cached = cache.get(cacheKey);
-  
-  // Shorter cache for intraday data
-  const cacheTime = period === '1D' ? 60000 : CACHE_DURATION; // 1 min for 1D, 5 min for others
-  
-  if (cached && Date.now() - cached.timestamp < cacheTime) {
+async function fetchWithDedup(key, ttl, fetcher) {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < ttl) {
     return cached.data;
   }
 
-  try {
-    // Yahoo Finance public API endpoint (no API key required)
-    // Using CORS proxy to bypass browser CORS restrictions
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`;
-    
-    // Use a public CORS proxy (you can also set up your own)
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
-    
-    const response = await fetch(proxyUrl);
+  if (inflight.has(key)) {
+    return inflight.get(key);
+  }
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    let data = await response.json();
-    
-    // If using proxy, extract the actual data
-    if (data.contents) {
-      data = JSON.parse(data.contents);
-    }
-
-    // Check for errors
-    if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
-      throw new Error('No data found');
-    }
-
-    const result = data.chart.result[0];
-    const timestamps = result.timestamp;
-    const quote = result.indicators.quote[0];
-    const closes = quote.close;
-    const opens = quote.open;
-    const highs = quote.high;
-    const lows = quote.low;
-
-    if (!timestamps || !closes) {
-      throw new Error('Invalid data format');
-    }
-
-    // Convert to array format for lightweight-charts
-    const chartData = timestamps
-      .map((timestamp, index) => {
-        const close = closes[index];
-        if (!close || isNaN(close)) return null;
-        
-        // Format time based on interval
-        // For intraday (5m, 1h), lightweight-charts needs Unix timestamp
-        // For daily+, use YYYY-MM-DD string format
-        let timeValue;
-        
-        if (interval === '5m' || interval === '1h') {
-          // For intraday, use Unix timestamp (seconds)
-          timeValue = timestamp;
-        } else {
-          // For daily/weekly/monthly, use YYYY-MM-DD string
-          const date = new Date(timestamp * 1000);
-          timeValue = date.toISOString().split('T')[0];
-        }
-        
-        const baseData = {
-          time: timeValue,
-          value: close
-        };
-        
-        // Add OHLC for candlestick charts
-        if (opens && highs && lows && opens[index] && highs[index] && lows[index]) {
-          const open = opens[index];
-          const high = highs[index];
-          const low = lows[index];
-          
-          // Only add if values are valid numbers
-          if (!isNaN(open) && !isNaN(high) && !isNaN(low)) {
-            baseData.open = open;
-            baseData.high = high;
-            baseData.low = low;
-          }
-        }
-        
-        return baseData;
-      })
-      .filter(item => item !== null)
-
-    // Cache the result
-    cache.set(cacheKey, {
-      data: chartData,
-      timestamp: Date.now()
+  const promise = fetcher()
+    .then((data) => {
+      cache.set(key, { data, timestamp: Date.now() });
+      inflight.delete(key);
+      return data;
+    })
+    .catch((err) => {
+      inflight.delete(key);
+      throw err;
     });
 
-    return chartData;
-  } catch (error) {
-    console.error(`Error fetching stock data for ${symbol}:`, error);
-    console.error('Falling back to mock data. This usually means CORS is blocked or API rate limit hit.');
-    // Return fallback data on error - but log it clearly
-    const { days } = getIntervalForPeriod(period);
-    const fallbackData = getFallbackData(symbol, days);
-    console.warn('Using fallback data - API request failed. Check network tab for CORS errors.');
-    return fallbackData;
-  }
+  inflight.set(key, promise);
+  return promise;
 }
 
-/**
- * Fetch latest quote for real-time updates
- * @param {string} symbol - Stock ticker symbol
- * @returns {Promise<Object>} Latest price data
- */
+async function fetchViaProxy(yahooUrl) {
+  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
+  const response = await fetch(proxyUrl);
+  if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  let data = await response.json();
+  if (data.contents) data = JSON.parse(data.contents);
+  return data;
+}
+
+function parseChartFromYahoo(data, interval) {
+  if (!data.chart?.result?.[0]) throw new Error('No data found');
+  const result = data.chart.result[0];
+  const timestamps = result.timestamp;
+  const quote = result.indicators.quote[0];
+  const closes = quote.close;
+  const opens = quote.open;
+  const highs = quote.high;
+  const lows = quote.low;
+  if (!timestamps || !closes) throw new Error('Invalid data format');
+
+  return timestamps
+    .map((timestamp, index) => {
+      const close = closes[index];
+      if (!close || isNaN(close)) return null;
+      const timeValue =
+        interval === '5m' || interval === '1h'
+          ? timestamp
+          : new Date(timestamp * 1000).toISOString().split('T')[0];
+      const baseData = { time: timeValue, value: close };
+      if (opens?.[index] && highs?.[index] && lows?.[index]) {
+        const open = opens[index];
+        const high = highs[index];
+        const low = lows[index];
+        if (!isNaN(open) && !isNaN(high) && !isNaN(low)) {
+          baseData.open = open;
+          baseData.high = high;
+          baseData.low = low;
+        }
+      }
+      return baseData;
+    })
+    .filter(Boolean);
+}
+
+export async function fetchStockData(symbol, period = '1Y') {
+  const { interval, range, days } = getIntervalForPeriod(period);
+  const cacheKey = `chart-${symbol}-${period}`;
+  const cacheTime = period === '1D' ? CHART_CACHE_1D_MS : CACHE_DURATION;
+
+  return fetchWithDedup(cacheKey, cacheTime, async () => {
+    try {
+      const res = await fetch(
+        `/api/market/chart/${encodeURIComponent(symbol)}?period=${encodeURIComponent(period)}`
+      );
+      if (res.ok) {
+        const { data } = await res.json();
+        if (data?.length) return data;
+      }
+    } catch {
+      // fall through
+    }
+
+    try {
+      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`;
+      const data = await fetchViaProxy(yahooUrl);
+      return parseChartFromYahoo(data, interval);
+    } catch (error) {
+      console.error(`Error fetching stock data for ${symbol}:`, error);
+      return getFallbackData(symbol, days);
+    }
+  });
+}
+
 export async function fetchLatestPrice(symbol) {
-  try {
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
-    const response = await fetch(proxyUrl);
+  const cacheKey = `latest-${symbol}`;
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  return fetchWithDedup(cacheKey, 10 * 1000, async () => {
+    try {
+      const res = await fetch(`/api/market/latest/${encodeURIComponent(symbol)}`);
+      if (res.ok) {
+        const { latest } = await res.json();
+        if (latest) return latest;
+      }
+    } catch {
+      // fall through
     }
 
-    let data = await response.json();
-    
-    // If using proxy, extract the actual data
-    if (data.contents) {
-      data = JSON.parse(data.contents);
-    }
-
-    if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+    try {
+      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`;
+      const data = await fetchViaProxy(yahooUrl);
+      const series = parseChartFromYahoo(data, '1m');
+      return series.at(-1) ?? null;
+    } catch (error) {
+      console.error(`Error fetching latest price for ${symbol}:`, error);
       return null;
     }
-
-    const result = data.chart.result[0];
-    const timestamps = result.timestamp;
-    const closes = result.indicators.quote[0].close;
-
-    if (!timestamps || !closes || closes.length === 0) {
-      return null;
-    }
-
-    // Get the latest data point
-    const lastIndex = closes.length - 1;
-    const timestamp = timestamps[lastIndex];
-    const price = closes[lastIndex];
-
-    if (!price || isNaN(price)) return null;
-
-    // For intraday updates, use Unix timestamp
-    return {
-      time: timestamp, // Unix timestamp in seconds
-      value: price
-    };
-  } catch (error) {
-    console.error(`Error fetching latest price for ${symbol}:`, error);
-    return null;
-  }
+  });
 }
 
-/**
- * Search for stocks by ticker or company name
- * @param {string} query - Search query (ticker or company name)
- * @returns {Promise<Array>} Array of stock objects with ticker, name, exchange
- */
+export function tickerFromQuery(query) {
+  const ticker = query.trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(ticker)) return null;
+  return {
+    ticker,
+    name: ticker,
+    expenseRatio: 'N/A',
+    avgReturn: 10,
+    volatility: 'Medium',
+    dividendYield: 'N/A',
+  };
+}
+
 export async function searchStocks(query) {
-  if (!query || query.trim() === '') {
-    return [];
-  }
+  if (!query?.trim()) return [];
 
   const cacheKey = `search-${query}`;
-  const cached = cache.get(cacheKey);
-  
-  if (cached && Date.now() - cached.timestamp < 60000) { // 1 minute cache
-    return cached.data;
-  }
 
-  try {
-    // Yahoo Finance search endpoint
-    const searchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`;
-    
-    const response = await fetch(proxyUrl);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  return fetchWithDedup(cacheKey, 60 * 1000, async () => {
+    try {
+      const res = await fetch(`/api/market/search?q=${encodeURIComponent(query.trim())}`);
+      if (res.ok) {
+        const { results } = await res.json();
+        if (results?.length) return results;
+      }
+    } catch {
+      // fall through
     }
 
-    let data = await response.json();
-    
-    // If using proxy, extract the actual data
-    if (data.contents) {
-      data = JSON.parse(data.contents);
+    try {
+      const searchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
+      const data = await fetchViaProxy(searchUrl);
+      if (!data.quotes?.length) throw new Error('No quotes');
+      return data.quotes
+        .filter((q) => ['EQUITY', 'ETF', 'INDEX'].includes(q.quoteType))
+        .map((q) => ({
+          ticker: q.symbol,
+          name: q.longname || q.shortname || q.symbol,
+          exchange: q.exchange || '',
+          expenseRatio: 'N/A',
+          avgReturn: 'N/A',
+          volatility: 'Medium',
+          dividendYield: 'N/A',
+        }));
+    } catch (error) {
+      console.error(`Error searching stocks for "${query}":`, error);
+      const fallback = tickerFromQuery(query);
+      return fallback ? [fallback] : [];
     }
-
-    if (!data.quotes || !Array.isArray(data.quotes)) {
-      return [];
-    }
-
-    // Format results to match ETF structure
-    const results = data.quotes
-      .filter(quote => quote.quoteType === 'EQUITY' || quote.quoteType === 'ETF' || quote.quoteType === 'INDEX')
-      .map(quote => ({
-        ticker: quote.symbol,
-        name: quote.longname || quote.shortname || quote.symbol,
-        exchange: quote.exchange || '',
-        // Add default values for ETF-specific fields (will be fetched when selected)
-        expenseRatio: 'N/A',
-        avgReturn: 'N/A',
-        volatility: 'Medium',
-        dividendYield: 'N/A'
-      }));
-
-    cache.set(cacheKey, {
-      data: results,
-      timestamp: Date.now()
-    });
-
-    return results;
-  } catch (error) {
-    console.error(`Error searching stocks for "${query}":`, error);
-    return [];
-  }
+  });
 }
 
-/**
- * Get real-time quote data (current price)
- * @param {string} symbol - Stock ticker symbol
- * @returns {Promise<Object>} Quote data with price, change, etc.
- */
 export async function fetchStockQuote(symbol) {
   const cacheKey = `quote-${symbol}`;
-  const cached = cache.get(cacheKey);
-  
-  if (cached && Date.now() - cached.timestamp < 60000) { // 1 minute cache for quotes
-    return cached.data;
-  }
 
-  try {
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
-    const response = await fetch(proxyUrl);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  return fetchWithDedup(cacheKey, QUOTE_CACHE_MS, async () => {
+    try {
+      const res = await fetch(`/api/market/quote/${encodeURIComponent(symbol)}`);
+      if (res.ok) {
+        const { quote } = await res.json();
+        if (quote) return quote;
+      }
+    } catch {
+      // fall through
     }
 
-    let data = await response.json();
-    
-    // If using proxy, extract the actual data
-    if (data.contents) {
-      data = JSON.parse(data.contents);
-    }
+    try {
+      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+      const data = await fetchViaProxy(yahooUrl);
+      const result = data.chart.result[0];
+      const meta = result.meta;
+      const quote = result.indicators.quote[0];
 
-    if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+      let price = meta.regularMarketPrice;
+      if (!price || isNaN(price)) {
+        const validCloses = (quote.close || []).filter((c) => c != null && !isNaN(c) && c > 0);
+        price = validCloses.at(-1) ?? meta.previousClose ?? 0;
+      }
+
+      let previousClose = meta.previousClose;
+      if (!previousClose || isNaN(previousClose)) {
+        const validCloses = (quote.close || []).filter((c) => c != null && !isNaN(c) && c > 0);
+        previousClose = validCloses.at(-2) ?? validCloses.at(-1) ?? price;
+      }
+
+      const change = price - previousClose;
+      const changePercent = previousClose ? (change / previousClose) * 100 : 0;
+
+      return {
+        symbol: meta.symbol || symbol,
+        price,
+        change,
+        changePercent,
+        volume: meta.regularMarketVolume || 0,
+        high: meta.regularMarketDayHigh || price,
+        low: meta.regularMarketDayLow || price,
+        open: meta.regularMarketOpen || price,
+        previousClose,
+      };
+    } catch (error) {
+      console.error(`Error fetching quote for ${symbol}:`, error);
       return getFallbackQuote(symbol);
     }
-
-    const result = data.chart.result[0];
-    const meta = result.meta;
-    const quote = result.indicators.quote[0];
-    
-    // Get current price - prioritize regularMarketPrice
-    let price = meta.regularMarketPrice;
-    if (!price || price === 0 || isNaN(price)) {
-      // Fallback to last close price
-      if (quote.close && quote.close.length > 0) {
-        const validCloses = quote.close.filter(c => c !== null && !isNaN(c) && c > 0);
-        if (validCloses.length > 0) {
-          price = validCloses[validCloses.length - 1];
-        }
-      }
-    }
-    if (!price || price === 0 || isNaN(price)) {
-      price = meta.previousClose || 0;
-    }
-    
-    // Get previous close - this is yesterday's closing price
-    let previousClose = meta.previousClose;
-    if (!previousClose || previousClose === 0 || isNaN(previousClose)) {
-      // Try to get from quote data (second to last close)
-      if (quote.close && quote.close.length > 1) {
-        const validCloses = quote.close.filter(c => c !== null && !isNaN(c) && c > 0);
-        if (validCloses.length > 1) {
-          previousClose = validCloses[validCloses.length - 2];
-        } else if (validCloses.length === 1) {
-          previousClose = validCloses[0];
-        }
-      }
-    }
-    if (!previousClose || previousClose === 0 || isNaN(previousClose)) {
-      previousClose = price;
-    }
-    
-    // Calculate change from previous close (today's change)
-    const change = price && previousClose && !isNaN(price) && !isNaN(previousClose) ? (price - previousClose) : 0;
-    const changePercent = previousClose && previousClose !== 0 && !isNaN(change) ? (change / previousClose * 100) : 0;
-    
-    const quoteData = {
-      symbol: meta.symbol || symbol,
-      price: price,
-      change: change,
-      changePercent: changePercent,
-      volume: meta.regularMarketVolume || 0,
-      high: meta.regularMarketDayHigh || price,
-      low: meta.regularMarketDayLow || price,
-      open: meta.regularMarketOpen || price,
-      previousClose: previousClose
-    };
-
-    cache.set(cacheKey, {
-      data: quoteData,
-      timestamp: Date.now()
-    });
-
-    return quoteData;
-  } catch (error) {
-    console.error(`Error fetching quote for ${symbol}:`, error);
-    return getFallbackQuote(symbol);
-  }
+  });
 }
 
-/**
- * Fallback data generator (used when API fails or rate limited)
- */
 function getFallbackData(symbol, days) {
-  const basePrices = {
-    'QQQ': 380,
-    'VOO': 450,
-    'SPY': 420,
-    'AAPL': 175,
-    'MSFT': 380,
-    'GOOGL': 140
-  };
-
+  const basePrices = { QQQ: 380, VOO: 450, SPY: 420, AAPL: 175, MSFT: 380, GOOGL: 140 };
   const basePrice = basePrices[symbol] || 100;
   const data = [];
   const startDate = new Date();
@@ -374,29 +260,16 @@ function getFallbackData(symbol, days) {
   for (let i = 0; i < days; i++) {
     const date = new Date(startDate);
     date.setDate(date.getDate() + i);
-    
-    // Skip weekends
     if (date.getDay() === 0 || date.getDay() === 6) continue;
-    
     const change = (Math.random() - 0.48) * 2;
     const price = Math.max(basePrice * 0.5, basePrice + change * (i / days));
-    
-    data.push({
-      time: date.toISOString().split('T')[0],
-      value: Math.round(price * 100) / 100
-    });
+    data.push({ time: date.toISOString().split('T')[0], value: Math.round(price * 100) / 100 });
   }
-
   return data;
 }
 
 function getFallbackQuote(symbol) {
-  const basePrices = {
-    'QQQ': 380,
-    'VOO': 450,
-    'SPY': 420
-  };
-
+  const basePrices = { QQQ: 380, VOO: 450, SPY: 420 };
   const price = basePrices[symbol] || 100;
   return {
     symbol,
@@ -407,6 +280,67 @@ function getFallbackQuote(symbol) {
     high: price * 1.02,
     low: price * 0.98,
     open: price,
-    previousClose: price
+    previousClose: price,
   };
+}
+
+function todayDateStr() {
+  return new Date().toISOString().split('T')[0];
+}
+
+/** Fresh quote — never reads from the 15s quote cache */
+export async function fetchLiveQuote(symbol) {
+  try {
+    const res = await fetch(
+      `/api/market/quote/${encodeURIComponent(symbol)}?_=${Date.now()}`,
+      { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+    );
+    if (res.ok) {
+      const { quote } = await res.json();
+      if (quote?.price != null && !isNaN(quote.price)) return quote;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+/** Latest { time, value } tick for live chart updates */
+export async function fetchLiveTick(symbol, period = '1Y') {
+  if (period === '1D' || period === '1W') {
+    try {
+      const res = await fetch(
+        `/api/market/latest/${encodeURIComponent(symbol)}?_=${Date.now()}`,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+      );
+      if (res.ok) {
+        const { latest } = await res.json();
+        if (latest?.value != null && !isNaN(latest.value)) return latest;
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  const quote = await fetchLiveQuote(symbol);
+  if (quote?.price == null || isNaN(quote.price)) return null;
+
+  const time =
+    (period === '1D' || period === '1W') && quote.marketTime
+      ? quote.marketTime
+      : todayDateStr();
+
+  return { time, value: quote.price, marketState: quote.marketState };
+}
+
+export async function fetchLivePrice(symbol, period = '1Y') {
+  const tick = await fetchLiveTick(symbol, period);
+  return tick?.value ?? null;
+}
+
+/** Clear cached quote/chart for a symbol (call after manual refresh) */
+export function invalidateSymbolCache(symbol) {
+  for (const key of cache.keys()) {
+    if (key.includes(symbol)) cache.delete(key);
+  }
 }

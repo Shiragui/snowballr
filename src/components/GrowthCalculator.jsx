@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { etfs } from "../data/etfs";
 
-export default function GrowthCalculator({ etf, onData }) {
+export default function GrowthCalculator({ etf, onData, onInputsChange, loadProjection }) {
   const [initialDeposit, setInitialDeposit] = useState(5000);
   const [yearsOfGrowth, setYearsOfGrowth] = useState(5);
   const [contributionAmount, setContributionAmount] = useState(100);
@@ -74,6 +74,39 @@ export default function GrowthCalculator({ etf, onData }) {
       setEstimatedRate(getDefaultEstimatedRate(etf));
     }
   }, [etf?.ticker]);
+
+  useEffect(() => {
+    if (!loadProjection) return;
+    setInitialDeposit(loadProjection.initialDeposit ?? 5000);
+    setYearsOfGrowth(loadProjection.yearsOfGrowth ?? 5);
+    setContributionAmount(loadProjection.contributionAmount ?? 100);
+    setContributionFrequency(loadProjection.contributionFrequency || 'monthly');
+    setEstimatedRate(loadProjection.estimatedRate ?? 10);
+    setCompareInput(loadProjection.compareTicker || '');
+  }, [loadProjection?.id]);
+
+  useEffect(() => {
+    if (!onInputsChange || !etf) return;
+    onInputsChange({
+      name: `${etf.ticker} · ${parseNum(yearsOfGrowth, 1)}y projection`,
+      etfTicker: etf.ticker,
+      initialDeposit: parseNum(initialDeposit, 0),
+      yearsOfGrowth: parseNum(yearsOfGrowth, 1),
+      contributionAmount: parseNum(contributionAmount, 0),
+      contributionFrequency,
+      estimatedRate: parseNum(estimatedRate, 0),
+      compareTicker: compareInput.trim() || null,
+    });
+  }, [
+    etf,
+    initialDeposit,
+    yearsOfGrowth,
+    contributionAmount,
+    contributionFrequency,
+    estimatedRate,
+    compareInput,
+    onInputsChange,
+  ]);
 
   // Handle compare input changes with autocomplete
   const handleCompareChange = (e) => {
