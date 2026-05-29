@@ -1,5 +1,7 @@
 // Stock data service — prefers local API proxy (fast), falls back to CORS proxy
 
+import { getBrowseConfig, isUsListedSymbol } from '../data/browseQueries.js';
+
 const cache = new Map();
 const inflight = new Map();
 const CACHE_DURATION = 5 * 60 * 1000;
@@ -343,4 +345,136 @@ export function invalidateSymbolCache(symbol) {
   for (const key of cache.keys()) {
     if (key.includes(symbol)) cache.delete(key);
   }
+}
+
+/** 1-year price return % for multiple symbols */
+export async function fetchYearReturns(symbols) {
+  const unique = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))];
+  if (!unique.length) return {};
+
+  const cacheKey = `returns-${unique.sort().join(',')}`;
+
+  return fetchWithDedup(cacheKey, 30 * 60 * 1000, async () => {
+    const returns = {};
+
+    try {
+      const res = await fetch(
+        `/api/market/returns?symbols=${encodeURIComponent(unique.join(','))}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        Object.assign(returns, data.returns || {});
+      }
+    } catch (err) {
+      console.error('Error fetching year returns:', err);
+    }
+
+    // Client-side fallback when API is down or a symbol is missing
+    await Promise.all(
+      unique.map(async (symbol) => {
+        if (returns[symbol] != null && !isNaN(returns[symbol])) return;
+        try {
+          const chart = await fetchStockData(symbol, '1Y');
+          if (chart.length >= 2) {
+            const first = chart[0].value;
+            const last = chart[chart.length - 1].value;
+            if (first > 0 && last != null) {
+              returns[symbol] = ((last - first) / first) * 100;
+            }
+          }
+        } catch {
+          returns[symbol] = returns[symbol] ?? null;
+        }
+      })
+    );
+
+    return returns;
+  });
+}
+
+export function formatReturnPct(value) {
+  if (value == null || isNaN(value)) return '—';
+  const sign = value >= 0 ? '+' : '';
+  return `${sign}${value.toFixed(1)}%`;
+}
+
+export function formatDividendYield(value) {
+  if (value == null || isNaN(value) || value === 0) return '—';
+  return `${Number(value).toFixed(1)}%`;
+}
+
+export function formatExpenseRatio(value) {
+  if (value == null || value === 'N/A' || isNaN(value)) return null;
+  return `${Number(value).toFixed(2)}%/yr fee`;
+}
+
+/** Load next page of browse results for infinite scroll */
+export async function fetchBrowsePage(assetType, categoryId, page, excludeTickers = []) {
+  const excludeSet = new Set(excludeTickers.map((t) => t.toUpperCase()));
+  const config = getBrowseConfig(assetType, categoryId);
+
+  if (!config) {
+    return { items: [], hasMore: false, page };
+  }
+
+  if (page >= config.queries.length) {
+    return { items: [], hasMore: false, page };
+  }
+
+  // Try backend browse route first
+  try {
+    const exclude = [...excludeSet].join(',');
+    const res = await fetch(
+      `/api/market/browse/${encodeURIComponent(assetType)}/${encodeURIComponent(categoryId)}?page=${page}&limit=8&exclude=${encodeURIComponent(exclude)}`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.items?.length > 0) return data;
+      if (data.hasMore && page < config.queries.length - 1) return data;
+    }
+  } catch (err) {
+    console.error('Browse page error:', err);
+  }
+
+  // Client fallback — search via existing search API
+  const query = config.queries[page];
+  let results = [];
+
+  try {
+    const res = await fetch(`/api/market/search?q=${encodeURIComponent(query)}`);
+    if (res.ok) {
+      const data = await res.json();
+      results = data.results || [];
+    }
+  } catch {
+    // fall through
+  }
+
+  if (!results.length) {
+    results = await searchStocks(query);
+  }
+
+  const wantEtf = assetType === 'etfs';
+  const items = [];
+  for (const r of results) {
+    const ticker = String(r.ticker || '').toUpperCase();
+    if (!ticker || excludeSet.has(ticker) || !isUsListedSymbol(ticker)) continue;
+
+    const type = r.quoteType || '';
+    if (wantEtf) {
+      if (type && type !== 'ETF' && type !== 'MUTUALFUND') continue;
+    } else if (type === 'ETF') {
+      continue;
+    }
+
+    items.push(r);
+    if (items.length >= 8) break;
+  }
+
+  return {
+    items,
+    hasMore: page < config.queries.length - 1,
+    page,
+    query,
+  };
 }

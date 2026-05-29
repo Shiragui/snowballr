@@ -1,0 +1,131 @@
+/** Popular stock categories for browse mode (same shape as ETF categories) */
+export const stockCategories = [
+  {
+    id: 'bigtech',
+    label: 'Big Tech',
+    description: 'Largest US technology companies',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'AAPL', name: 'Apple Inc.', avgReturn: 12, volatility: 'Medium' },
+      { ticker: 'MSFT', name: 'Microsoft Corporation', avgReturn: 12, volatility: 'Medium' },
+      { ticker: 'GOOGL', name: 'Alphabet Inc.', avgReturn: 11, volatility: 'Medium' },
+      { ticker: 'AMZN', name: 'Amazon.com Inc.', avgReturn: 13, volatility: 'High' },
+      { ticker: 'META', name: 'Meta Platforms Inc.', avgReturn: 14, volatility: 'High' },
+      { ticker: 'NVDA', name: 'NVIDIA Corporation', avgReturn: 18, volatility: 'High' },
+    ],
+  },
+  {
+    id: 'ai-chips',
+    label: 'AI & Semiconductors',
+    description: 'Chips, cloud, and AI infrastructure',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'NVDA', name: 'NVIDIA Corporation', avgReturn: 18, volatility: 'High' },
+      { ticker: 'AMD', name: 'Advanced Micro Devices', avgReturn: 15, volatility: 'High' },
+      { ticker: 'AVGO', name: 'Broadcom Inc.', avgReturn: 14, volatility: 'High' },
+      { ticker: 'TSM', name: 'Taiwan Semiconductor', avgReturn: 12, volatility: 'High' },
+      { ticker: 'ARM', name: 'Arm Holdings', avgReturn: 10, volatility: 'High' },
+      { ticker: 'PLTR', name: 'Palantir Technologies', avgReturn: 8, volatility: 'High' },
+    ],
+  },
+  {
+    id: 'ev-auto',
+    label: 'EVs & Auto',
+    description: 'Electric vehicles and automakers',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'TSLA', name: 'Tesla Inc.', avgReturn: 10, volatility: 'High' },
+      { ticker: 'F', name: 'Ford Motor Company', avgReturn: 5, volatility: 'Medium' },
+      { ticker: 'GM', name: 'General Motors', avgReturn: 5, volatility: 'Medium' },
+      { ticker: 'RIVN', name: 'Rivian Automotive', avgReturn: 3, volatility: 'High' },
+      { ticker: 'TM', name: 'Toyota Motor Corp.', avgReturn: 6, volatility: 'Low' },
+    ],
+  },
+  {
+    id: 'finance',
+    label: 'Finance & Payments',
+    description: 'Banks, payments, and financial services',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'JPM', name: 'JPMorgan Chase & Co.', avgReturn: 9, volatility: 'Medium' },
+      { ticker: 'BAC', name: 'Bank of America', avgReturn: 8, volatility: 'Medium' },
+      { ticker: 'V', name: 'Visa Inc.', avgReturn: 10, volatility: 'Medium' },
+      { ticker: 'MA', name: 'Mastercard Inc.', avgReturn: 10, volatility: 'Medium' },
+      { ticker: 'GS', name: 'Goldman Sachs Group', avgReturn: 9, volatility: 'High' },
+      { ticker: 'BRK-B', name: 'Berkshire Hathaway', avgReturn: 8, volatility: 'Low' },
+    ],
+  },
+  {
+    id: 'healthcare',
+    label: 'Healthcare & Pharma',
+    description: 'Drug makers, insurers, and med-tech',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'LLY', name: 'Eli Lilly and Company', avgReturn: 12, volatility: 'Medium' },
+      { ticker: 'UNH', name: 'UnitedHealth Group', avgReturn: 8, volatility: 'Low' },
+      { ticker: 'JNJ', name: 'Johnson & Johnson', avgReturn: 5, volatility: 'Low' },
+      { ticker: 'ABBV', name: 'AbbVie Inc.', avgReturn: 7, volatility: 'Medium' },
+      { ticker: 'PFE', name: 'Pfizer Inc.', avgReturn: 3, volatility: 'Low' },
+      { ticker: 'MRK', name: 'Merck & Co.', avgReturn: 6, volatility: 'Low' },
+    ],
+  },
+  {
+    id: 'consumer',
+    label: 'Consumer & Retail',
+    description: 'Everyday brands and retail giants',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'WMT', name: 'Walmart Inc.', avgReturn: 7, volatility: 'Low' },
+      { ticker: 'COST', name: 'Costco Wholesale', avgReturn: 10, volatility: 'Low' },
+      { ticker: 'NKE', name: 'Nike Inc.', avgReturn: 6, volatility: 'Medium' },
+      { ticker: 'MCD', name: "McDonald's Corporation", avgReturn: 6, volatility: 'Low' },
+      { ticker: 'SBUX', name: 'Starbucks Corporation', avgReturn: 5, volatility: 'Medium' },
+      { ticker: 'KO', name: 'The Coca-Cola Company', avgReturn: 4, volatility: 'Low' },
+    ],
+  },
+  {
+    id: 'media',
+    label: 'Media & Entertainment',
+    description: 'Streaming, gaming, and content',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'NFLX', name: 'Netflix Inc.', avgReturn: 11, volatility: 'High' },
+      { ticker: 'DIS', name: 'The Walt Disney Company', avgReturn: 4, volatility: 'Medium' },
+      { ticker: 'SPOT', name: 'Spotify Technology', avgReturn: 8, volatility: 'High' },
+      { ticker: 'RBLX', name: 'Roblox Corporation', avgReturn: 6, volatility: 'High' },
+      { ticker: 'WBD', name: 'Warner Bros. Discovery', avgReturn: 2, volatility: 'High' },
+    ],
+  },
+  {
+    id: 'energy',
+    label: 'Energy & Industrials',
+    description: 'Oil, gas, aerospace, and heavy industry',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'XOM', name: 'Exxon Mobil Corporation', avgReturn: 8, volatility: 'Medium' },
+      { ticker: 'CVX', name: 'Chevron Corporation', avgReturn: 7, volatility: 'Medium' },
+      { ticker: 'CAT', name: 'Caterpillar Inc.', avgReturn: 9, volatility: 'Medium' },
+      { ticker: 'BA', name: 'The Boeing Company', avgReturn: 5, volatility: 'High' },
+      { ticker: 'GE', name: 'GE Aerospace', avgReturn: 10, volatility: 'Medium' },
+      { ticker: 'LMT', name: 'Lockheed Martin', avgReturn: 6, volatility: 'Low' },
+    ],
+  },
+  {
+    id: 'popular',
+    label: 'Retail Favorites',
+    description: 'Commonly searched and discussed stocks',
+    primaryMetric: 'growth',
+    etfs: [
+      { ticker: 'TSLA', name: 'Tesla Inc.', avgReturn: 10, volatility: 'High' },
+      { ticker: 'GME', name: 'GameStop Corp.', avgReturn: 5, volatility: 'High' },
+      { ticker: 'AMC', name: 'AMC Entertainment', avgReturn: 2, volatility: 'High' },
+      { ticker: 'SOFI', name: 'SoFi Technologies', avgReturn: 8, volatility: 'High' },
+      { ticker: 'COIN', name: 'Coinbase Global', avgReturn: 12, volatility: 'High' },
+      { ticker: 'HOOD', name: 'Robinhood Markets', avgReturn: 10, volatility: 'High' },
+    ],
+  },
+];
+
+export const allCatalogStocks = Array.from(
+  new Map(stockCategories.flatMap((c) => c.etfs.map((e) => [e.ticker, e]))).values()
+);

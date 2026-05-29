@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getBrowseConfig, isUsListedSymbol } from '../../src/data/browseQueries.js';
 
 const router = Router();
 
@@ -146,6 +147,11 @@ function formatSearchQuote(quote) {
   };
 }
 
+/** Prefer liquid US-listed symbols (skip foreign tickers, futures, indices) */
+function isUsListed(symbol) {
+  return isUsListedSymbol(symbol);
+}
+
 router.get('/search', async (req, res) => {
   const query = String(req.query.q || '').trim();
   if (!query) return res.json({ results: [] });
@@ -213,6 +219,115 @@ router.get('/latest/:symbol', async (req, res) => {
   } catch (err) {
     console.error(`Latest price error ${symbol}:`, err.message);
     res.status(502).json({ error: err.message });
+  }
+});
+
+const returnsCache = new Map();
+const RETURNS_CACHE_MS = 30 * 60 * 1000;
+
+function calcYearReturnFromChart(result) {
+  const series = parseChartSeries(result, '1d');
+  if (series.length < 2) return null;
+  const first = series[0].value;
+  const last = series.at(-1).value;
+  if (!first || first <= 0 || last == null) return null;
+  return ((last - first) / first) * 100;
+}
+
+async function fetchYearReturn(symbol) {
+  const cached = returnsCache.get(symbol);
+  if (cached && Date.now() - cached.at < RETURNS_CACHE_MS) {
+    return cached.value;
+  }
+
+  const result = await fetchYahooChart(symbol, '1d', '1y');
+  const value = calcYearReturnFromChart(result);
+  returnsCache.set(symbol, { value, at: Date.now() });
+  return value;
+}
+
+router.get('/returns', async (req, res) => {
+  const symbols = [
+    ...new Set(
+      String(req.query.symbols || '')
+        .split(',')
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean)
+    ),
+  ].slice(0, 40);
+
+  if (!symbols.length) return res.json({ returns: {} });
+
+  res.set('Cache-Control', 'public, max-age=1800');
+
+  const returns = {};
+  await Promise.all(
+    symbols.map(async (symbol) => {
+      try {
+        returns[symbol] = await fetchYearReturn(symbol);
+      } catch (err) {
+        console.error(`Return error ${symbol}:`, err.message);
+        returns[symbol] = null;
+      }
+    })
+  );
+
+  res.json({ returns });
+});
+
+async function fetchYahooSearch(query, count = 25) {
+  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=${count}&newsCount=0`;
+  const response = await fetch(url, { headers: YAHOO_HEADERS });
+  if (!response.ok) throw new Error(`Yahoo search failed (${response.status})`);
+  const data = await response.json();
+  return data.quotes || [];
+}
+
+router.get('/browse/:assetType/:categoryId', async (req, res) => {
+  const assetType = String(req.params.assetType || '').toLowerCase();
+  const categoryId = String(req.params.categoryId || '');
+  const page = Math.max(0, parseInt(req.query.page || '0', 10));
+  const limit = Math.min(Math.max(parseInt(req.query.limit || '8', 10), 1), 15);
+  const excludeSet = new Set(
+    String(req.query.exclude || '')
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean)
+  );
+
+  const config = getBrowseConfig(assetType, categoryId);
+  if (!config) {
+    return res.status(404).json({ items: [], hasMore: false, page });
+  }
+
+  if (page >= config.queries.length) {
+    return res.json({ items: [], hasMore: false, page });
+  }
+
+  try {
+    const query = config.queries[page];
+    const quotes = await fetchYahooSearch(query, 25);
+    const seen = new Set(excludeSet);
+    const items = [];
+
+    for (const q of quotes) {
+      if (!config.quoteTypes.includes(q.quoteType)) continue;
+      const ticker = String(q.symbol || '').toUpperCase();
+      if (!ticker || seen.has(ticker) || !isUsListed(ticker)) continue;
+      seen.add(ticker);
+      items.push(formatSearchQuote(q));
+      if (items.length >= limit) break;
+    }
+
+    res.json({
+      items,
+      hasMore: page < config.queries.length - 1,
+      page,
+      query,
+    });
+  } catch (err) {
+    console.error(`Browse error ${assetType}/${categoryId}:`, err.message);
+    res.status(502).json({ items: [], hasMore: false, page });
   }
 });
 

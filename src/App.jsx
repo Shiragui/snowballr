@@ -11,6 +11,7 @@ import SchwabHoldings from "./components/SchwabHoldings";
 import { useAuth } from "./context/AuthContext";
 import { api } from "./services/api";
 import { etfs } from "./data/etfs";
+import { allCatalogStocks } from "./data/stockCategories";
 
 const defaultEtfFields = {
   expenseRatio: 'N/A',
@@ -19,9 +20,11 @@ const defaultEtfFields = {
   dividendYield: 'N/A',
 };
 
+const catalogLookup = [...etfs, ...allCatalogStocks];
+
 function etfFromTicker(ticker) {
   return (
-    etfs.find((e) => e.ticker.toUpperCase() === ticker.toUpperCase()) || {
+    catalogLookup.find((e) => e.ticker.toUpperCase() === ticker.toUpperCase()) || {
       ticker: ticker.toUpperCase(),
       name: ticker.toUpperCase(),
       ...defaultEtfFields,
@@ -112,7 +115,7 @@ export default function App() {
         {/* Top section: Search bar and toggle */}
         <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 py-4 space-y-4 border-b border-primary-500/20">
           <div className="flex items-start justify-between gap-4">
-            <div className="w-full max-w-2xl flex-1">
+            <div className="w-full max-w-3xl flex-1">
               <Home onSelectETF={setSelectedETF} selectedETF={selectedETF} />
             </div>
             <AccountMenu
